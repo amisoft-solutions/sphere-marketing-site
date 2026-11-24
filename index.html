@@ -31,7 +31,7 @@
           <li><a href="#compliance">Compliance</a></li>
           <li><a href="#how">How it works</a></li>
         </ul>
-        <a class="btn btn-primary btn-sm" href="#contact">Request demo</a>
+        <a class="btn btn-primary btn-sm" href="#contact?type=demo">Request demo</a>
       </nav>
     </div>
   </header>
@@ -51,7 +51,7 @@
             and deliver packages without spreadsheets or emailed status.
           </p>
           <div class="hero-ctas">
-            <a class="btn btn-primary btn-lg" href="#contact">Request a demo</a>
+            <a class="btn btn-primary btn-lg" href="#contact?type=demo">Request a demo</a>
             <a class="btn btn-ghost btn-lg" href="#capabilities">Explore capabilities</a>
           </div>
           <ul class="hero-points">
@@ -509,12 +509,109 @@
     <section class="section section-navy" id="contact" aria-labelledby="cta-title">
       <div class="container cta-inner">
         <img class="cta-mark" src="assets/sphere-mark-inverse-256.png" alt="" width="56" height="56" />
-        <h2 id="cta-title">See SPHERE on your next study</h2>
-        <p class="cta-lead">
+        <h2 id="cta-title" tabindex="-1">See SPHERE on your next study</h2>
+        <p class="cta-lead" id="cta-lead">
           Request a walkthrough tailored to biometrics workflows — study home, shells, tracker,
           and audit with your process in mind.
         </p>
-        <a class="btn btn-primary btn-lg" href="mailto:hello@sphere.study?subject=SPHERE%20demo%20request">Request a demo</a>
+        <noscript>
+          <p class="cta-lead">JavaScript is required to send this form to the SPHERE team.</p>
+        </noscript>
+        <form
+          id="demo-request-form"
+          class="demo-form"
+          method="post"
+          action="#contact"
+          novalidate
+          aria-labelledby="cta-title"
+          aria-describedby="cta-lead"
+        >
+          <div class="hp-field" aria-hidden="true">
+            <label for="fax-number">Fax</label>
+            <input id="fax-number" name="fax_number" type="text" tabindex="-1" autocomplete="off" value="" />
+          </div>
+          <input type="hidden" id="request-type" name="requestType" value="Demo request" />
+          <input type="hidden" id="form-loaded-at" name="formLoadedAt" value="" />
+
+          <fieldset>
+            <legend>How the SPHERE team can reach you</legend>
+            <div class="demo-field">
+              <label for="full-name">Full name <span class="field-tag">(required)</span></label>
+              <input id="full-name" name="fullName" type="text" autocomplete="name" required aria-required="true" maxlength="120" aria-invalid="false" aria-describedby="full-name-error" />
+              <p id="full-name-error" class="field-error"></p>
+            </div>
+            <div class="demo-field">
+              <label for="job-title">Job title <span class="field-tag">(required)</span></label>
+              <input id="job-title" name="jobTitle" type="text" autocomplete="organization-title" required aria-required="true" maxlength="120" aria-invalid="false" aria-describedby="job-title-error" />
+              <p id="job-title-error" class="field-error"></p>
+            </div>
+            <div class="demo-field">
+              <label for="organization">Organization <span class="field-tag">(required)</span></label>
+              <input id="organization" name="organization" type="text" autocomplete="organization" required aria-required="true" maxlength="160" aria-invalid="false" aria-describedby="organization-error" />
+              <p id="organization-error" class="field-error"></p>
+            </div>
+            <div class="demo-field">
+              <label for="work-email">Work email <span class="field-tag">(required)</span></label>
+              <input id="work-email" name="workEmail" type="email" inputmode="email" autocomplete="email" required aria-required="true" maxlength="254" spellcheck="false" aria-invalid="false" aria-describedby="work-email-hint work-email-error" />
+              <p id="work-email-hint" class="field-hint">Use the email address you use for work.</p>
+              <p id="work-email-error" class="field-error"></p>
+            </div>
+            <div class="demo-field">
+              <label for="phone">Phone <span class="field-tag">(required)</span></label>
+              <input id="phone" name="phone" type="tel" inputmode="tel" autocomplete="tel" required aria-required="true" maxlength="32" spellcheck="false" aria-invalid="false" aria-describedby="phone-hint phone-error" />
+              <p id="phone-hint" class="field-hint">A leading + and spaces are fine. Include a country code if needed.</p>
+              <p id="phone-error" class="field-error"></p>
+            </div>
+          </fieldset>
+
+          <fieldset>
+            <legend>Optional</legend>
+            <div class="demo-field">
+              <label for="country">Country or region <span class="field-tag">(optional)</span></label>
+              <input id="country" name="country" type="text" autocomplete="country-name" maxlength="80" aria-invalid="false" aria-describedby="country-error" />
+              <p id="country-error" class="field-error"></p>
+            </div>
+            <div class="demo-field">
+              <label for="organization-type">Organization type <span class="field-tag">(optional)</span></label>
+              <select id="organization-type" name="organizationType" aria-invalid="false" aria-describedby="organization-type-error">
+                <option value="">Select if you wish</option>
+                <option value="Pharma/biotech">Pharma/biotech</option>
+                <option value="CRO">CRO</option>
+                <option value="Academic">Academic</option>
+                <option value="Other">Other</option>
+              </select>
+              <p id="organization-type-error" class="field-error"></p>
+            </div>
+            <div class="demo-field">
+              <label for="interest">What are you interested in? <span class="field-tag">(optional)</span></label>
+              <textarea id="interest" name="interest" rows="4" maxlength="1000" aria-invalid="false" aria-describedby="interest-error"></textarea>
+              <p id="interest-error" class="field-error"></p>
+            </div>
+            <div class="demo-field">
+              <label for="heard-about">How did you hear about SPHERE? <span class="field-tag">(optional)</span></label>
+              <input id="heard-about" name="heardAbout" type="text" maxlength="160" list="heard-about-list" aria-invalid="false" aria-describedby="heard-about-error" />
+              <datalist id="heard-about-list">
+                <option value="Conference"></option>
+                <option value="Colleague"></option>
+                <option value="Search"></option>
+                <option value="Other"></option>
+              </datalist>
+              <p id="heard-about-error" class="field-error"></p>
+            </div>
+            <div class="demo-field">
+              <label class="check-field" for="consent">
+                <input id="consent" name="consentToContact" type="checkbox" aria-invalid="false" aria-describedby="consent-error" />
+                <span>The SPHERE team may contact me about this request. <span class="field-tag">(optional)</span></span>
+              </label>
+              <p id="consent-error" class="field-error"></p>
+            </div>
+          </fieldset>
+
+          <div class="demo-actions">
+            <button type="submit" id="demo-submit" class="btn btn-primary btn-lg" disabled>Request a demo</button>
+          </div>
+        </form>
+        <div id="demo-form-status" class="form-status" role="status" aria-live="polite" tabindex="-1" hidden></div>
         <p class="cta-note">Serious booth conversation. No invented case studies.</p>
       </div>
     </section>
@@ -531,12 +628,14 @@
         <a href="#capabilities">Capabilities</a>
         <a href="#delivery">Delivery</a>
         <a href="#compliance">Compliance</a>
-        <a href="#contact">Request demo</a>
+        <a href="#contact?type=demo">Request demo</a>
       </nav>
       <p class="footer-copy">© SPHERE</p>
     </div>
   </footer>
 
+  <script src="config.js"></script>
   <script src="main.js"></script>
+  <script type="module" src="demo-form.js"></script>
 </body>
 </html>

@@ -1,0 +1,42 @@
+# SPHERE demo-request Worker. Stays on a workers.dev hostname.
+# Do not add a route or DNS record for spheresce.com.
+#
+# Replace <d1-database-id> after `npx wrangler d1 create sphere-demo-requests`.
+# Do not put account ids, API tokens, or the admin password in this file.
+# Secrets (set with `wrangler secret put`, never committed):
+#   ADMIN_PASSWORD
+#   RATE_LIMIT_SALT
+#   NOTIFY_TO          (only if email is later turned on)
+#   RESEND_API_KEY     (only if EMAIL_PROVIDER is resend)
+
+name = "sphere-demo-requests"
+main = "src/index.js"
+compatibility_date = "2026-11-01"
+workers_dev = true
+
+# account_id = "<account-id>"
+
+[[d1_databases]]
+binding = "DB"
+database_name = "sphere-demo-requests"
+database_id = "<d1-database-id>"
+migrations_dir = "migrations"
+
+[vars]
+# Exact browser origins. The Pages origin has no repository path.
+ALLOWED_ORIGINS = "https://www.spheresce.com,https://spheresce.com,https://amisoft-solutions.github.io"
+# Any http(s) port on localhost and 127.0.0.1 is also allowed while this is true.
+ALLOW_LOCALHOST = "true"
+# Secure session cookie in production. For `wrangler dev` over http, set COOKIE_SECURE=false in .dev.vars.
+COOKIE_SECURE = "true"
+# Admin email is off. The D1 queue works with this left false. See README.
+NOTIFY_EMAIL_ENABLED = "false"
+EMAIL_PROVIDER = "off"
+# EMAIL_FROM is a var, not a secret. Set it only when email is enabled, to a sender
+# the chosen provider has already verified. Do not use an address on spheresce.com
+# unless that domain is already verified somewhere else.
+
+# Uncomment only when sending through a Cloudflare zone that already has Email Routing.
+# That zone must not require new DNS on spheresce.com. Leave this commented while email is off.
+# [[send_email]]
+# name = "SEND_EMAIL"

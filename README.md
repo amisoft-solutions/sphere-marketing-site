@@ -47,3 +47,9 @@ python3 -m http.server 8765
 ## Live
 
 https://atulitllc.github.io/sphere-marketing-site/
+
+## Request a demo
+
+The navy contact band includes a demo request form. Required fields are full name, job title, organization, work email, and phone. The browser posts JSON to the Worker URL in `config.js`.
+
+Storage, validation, rate limiting, and the admin queue live in [`worker/`](worker/README.md). Email notifications are off until a mailbox path that does not need new DNS on spheresce.com is chosen. The queue works without email. Customer-facing copy refers to the SPHERE team.
