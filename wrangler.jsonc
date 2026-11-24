@@ -1,0 +1,9 @@
+{
+  // Bindings only. This file does not name a Pages project, so a deploy
+  // cannot be pointed at production by accident from the filename.
+  "compatibility_date": "2026-11-24",
+  "pages_build_output_dir": ".",
+  "send_email": [
+    { "name": "CONTACT_EMAIL" }
+  ]
+}

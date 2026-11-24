@@ -47,3 +47,9 @@ python3 -m http.server 8765
 ## Live
 
 https://atulitllc.github.io/sphere-marketing-site/
+
+## Contact form (preview)
+
+Request demo / Contact opens a form (modal on the home page, and a `/contact` page). Required fields are name, work email, company, phone, and job title. Message and interest are optional. Submissions POST to a Cloudflare Pages Function at `/api/contact`, which verifies a Turnstile token and a honeypot field, then sends email using deploy-time secrets (`CONTACT_TO`, `CONTACT_FROM`, `TURNSTILE_SECRET`). The recipient address is not stored in this repository or shown in the page.
+
+The preview currently uses Cloudflare's published dummy Turnstile sitekey. Replace it with a production widget before going live on www.spheresce.com. Do not merge this branch to `main` until that launch is approved — GitHub Pages on `main` is the live site.
