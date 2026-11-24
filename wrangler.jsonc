@@ -1,9 +1,10 @@
 {
-  // Bindings only. This file does not name a Pages project, so a deploy
-  // cannot be pointed at production by accident from the filename.
+  // Isolated preview project only — not the live GitHub Pages site
+  // and not sphere.amisoftsolutions.net / sphere-marketing-site.
+  "name": "sphere-sce-contact-preview",
   "compatibility_date": "2026-11-24",
-  "pages_build_output_dir": ".",
-  "send_email": [
-    { "name": "CONTACT_EMAIL" }
-  ]
+  "pages_build_output_dir": "."
+  // send_email is not supported in Pages wrangler config. The function
+  // reads CONTACT_EMAIL (and CONTACT_TO / CONTACT_FROM / TURNSTILE_SECRET)
+  // from the deployment. Wire a Worker send_email binding at go-live.
 }
