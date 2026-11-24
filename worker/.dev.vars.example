@@ -2,6 +2,7 @@
 ADMIN_PASSWORD=replace-with-a-long-random-password
 RATE_LIMIT_SALT=replace-with-a-random-string
 COOKIE_SECURE=false
+ALLOW_LOCALHOST=true
 # Leave email off. Do not put a notification inbox here until README "Email" is followed.
 # NOTIFY_EMAIL_ENABLED=false
 # EMAIL_PROVIDER=off

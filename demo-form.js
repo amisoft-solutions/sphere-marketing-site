@@ -1,4 +1,4 @@
-import { validateDemoRequest } from "./worker/src/validate.js";
+import { validateDemoRequest } from "./shared/demo-request-validate.js";
 
 var FIELD_IDS = {
   fullName: "full-name",

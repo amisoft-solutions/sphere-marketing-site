@@ -19,9 +19,8 @@ export function allowedOriginList(env) {
 export function isAllowedOrigin(origin, env) {
   if (!origin || typeof origin !== "string") return false;
   if (allowedOriginList(env).includes(origin)) return true;
-  if (String(env && env.ALLOW_LOCALHOST != null ? env.ALLOW_LOCALHOST : "true") === "false") {
-    return false;
-  }
+  const allowLocal = String(env && env.ALLOW_LOCALHOST != null ? env.ALLOW_LOCALHOST : "false").toLowerCase();
+  if (allowLocal !== "true") return false;
   let url;
   try {
     url = new URL(origin);

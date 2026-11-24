@@ -1,7 +1,8 @@
 import assert from "node:assert/strict";
 import test from "node:test";
 import worker from "../src/index.js";
-import { countRequests, createDb, makeEnv, payload } from "./helpers.js";
+import { sha256Hex } from "../src/http.js";
+import { countRequests, createDb, d1, makeEnv, payload } from "./helpers.js";
 
 async function postDemo(env, body, { origin, ip, userAgent } = {}) {
   const headers = { "Content-Type": "application/json" };
@@ -68,14 +69,14 @@ test("rejects a disallowed origin, a honeypot, a fast submit, and invalid fields
   assert.equal(blocked.response.headers.get("Access-Control-Allow-Origin"), null);
 
   const honeypot = await postDemo(env, payload({ faxNumber: "filled" }), {
-    origin: "http://localhost:8765",
+    origin: "https://www.spheresce.com",
     ip: "203.0.113.21",
   });
   assert.equal(honeypot.response.status, 400);
   assert.equal(JSON.stringify(honeypot.json).toLowerCase().includes("honeypot"), false);
 
   const fast = await postDemo(env, payload({ formLoadedAt: Date.now() }), {
-    origin: "http://127.0.0.1:8765",
+    origin: "https://www.spheresce.com",
     ip: "203.0.113.22",
   });
   assert.equal(fast.response.status, 400);
@@ -88,6 +89,24 @@ test("rejects a disallowed origin, a honeypot, a fast submit, and invalid fields
   assert.ok(invalid.json.fields.workEmail);
   assert.ok(invalid.json.fields.phone);
   assert.equal(countRequests(db), 0);
+});
+
+test("localhost is closed unless a test sets ALLOW_LOCALHOST", async () => {
+  const db = createDb();
+  const closed = makeEnv(db);
+  delete closed.ALLOW_LOCALHOST;
+  const blocked = await postDemo(closed, payload(), { origin: "http://localhost:8765", ip: "203.0.113.50" });
+  assert.equal(blocked.response.status, 403);
+  assert.equal(blocked.response.headers.get("Access-Control-Allow-Origin"), null);
+
+  const alsoClosed = await postDemo(makeEnv(db), payload(), { origin: "http://127.0.0.1:8765", ip: "203.0.113.52" });
+  assert.equal(alsoClosed.response.status, 403);
+
+  const open = makeEnv(db, { ALLOW_LOCALHOST: "true" });
+  const allowed = await postDemo(open, payload(), { origin: "http://127.0.0.1:8765", ip: "203.0.113.51" });
+  assert.equal(allowed.response.status, 201);
+  assert.equal(allowed.response.headers.get("Access-Control-Allow-Origin"), "http://127.0.0.1:8765");
+  assert.equal(countRequests(db), 1);
 });
 
 test("rate limits repeated demo posts per address", async () => {
@@ -216,4 +235,54 @@ test("rate limits admin sign-in attempts", async () => {
   const limited = await attempt();
   assert.equal(limited.status, 429);
   assert.match(await limited.text(), /Too many sign-in attempts/);
+});
+
+test("an expired session is rejected when cleanup fails", async () => {
+  const db = createDb();
+  const real = d1(db);
+  const env = makeEnv(db);
+  env.DB = {
+    prepare(sql) {
+      if (sql.includes("DELETE FROM admin_sessions")) {
+        return {
+          bind() {
+            return {
+              async run() {
+                throw new Error("cleanup failed");
+              },
+            };
+          },
+        };
+      }
+      return real.prepare(sql);
+    },
+  };
+  const token = "c".repeat(64);
+  const past = "2020-01-01T00:00:00.000Z";
+  db.prepare(
+    "INSERT INTO admin_sessions (token_hash, csrf_token, created_at, expires_at) VALUES (?, ?, ?, ?)"
+  ).run(await sha256Hex(token), "csrf-token", past, past);
+
+  const expired = await worker.fetch(
+    new Request("https://worker.test/admin", { headers: { Cookie: `sphere_admin=${token}` } }),
+    env
+  );
+  const expiredHtml = await expired.text();
+  assert.equal(expired.status, 200);
+  assert.match(expiredHtml, /type="password"/);
+  assert.equal(expiredHtml.includes("Sign out"), false);
+
+  const future = new Date(Date.now() + 60 * 60 * 1000).toISOString();
+  const liveToken = "d".repeat(64);
+  db.prepare(
+    "INSERT INTO admin_sessions (token_hash, csrf_token, created_at, expires_at) VALUES (?, ?, ?, ?)"
+  ).run(await sha256Hex(liveToken), "csrf-token", future, future);
+  const current = await worker.fetch(
+    new Request("https://worker.test/admin", { headers: { Cookie: `sphere_admin=${liveToken}` } }),
+    env
+  );
+  const currentHtml = await current.text();
+  assert.equal(current.status, 200);
+  assert.match(currentHtml, /Sign out/);
+  assert.equal(currentHtml.includes('id="password"'), false);
 });

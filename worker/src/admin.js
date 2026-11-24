@@ -136,12 +136,18 @@ async function loadSession(request, env) {
   if (!token) return null;
   const tokenHash = await sha256Hex(token);
   const now = new Date().toISOString();
-  await env.DB.prepare("DELETE FROM admin_sessions WHERE expires_at <= ?").bind(now).run();
-  return env.DB.prepare(
+  try {
+    await env.DB.prepare("DELETE FROM admin_sessions WHERE expires_at <= ?").bind(now).run();
+  } catch (err) {
+    console.error("session cleanup failed", err && err.message);
+  }
+  const session = await env.DB.prepare(
     "SELECT token_hash, csrf_token, expires_at FROM admin_sessions WHERE token_hash = ?"
   )
     .bind(tokenHash)
     .first();
+  if (!session || typeof session.expires_at !== "string" || session.expires_at <= now) return null;
+  return session;
 }
 
 async function statusCounts(db) {

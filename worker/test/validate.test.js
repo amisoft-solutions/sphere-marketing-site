@@ -1,6 +1,6 @@
 import assert from "node:assert/strict";
 import test from "node:test";
-import { isValidEmail, isValidPhone, validateDemoRequest } from "../src/validate.js";
+import { isValidEmail, isValidPhone, validateDemoRequest } from "../../shared/demo-request-validate.js";
 
 const NOW = 1_700_000_000_000;
 

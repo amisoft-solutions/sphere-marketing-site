@@ -1,6 +1,6 @@
 # SPHERE demo requests
 
-Cloudflare Worker and D1 database for the marketing-site demo form. The Worker stays on a `workers.dev` hostname. Do not add a route, custom domain, or DNS record for spheresce.com, and do not change GitHub Pages or the `CNAME` file.
+Cloudflare Worker and D1 database for the marketing-site demo form. The Worker stays on a `workers.dev` hostname. Do not add a route, custom domain, or DNS record for spheresce.com, and do not edit the `CNAME` file. The live Pages source is unchanged by this repo until someone switches it in the repository settings. See the site README for that one-time step.
 
 The queue works with email turned off. `NOTIFY_EMAIL_ENABLED` defaults to `false`.
 
@@ -39,7 +39,7 @@ For a local Worker:
 npx wrangler d1 migrations apply sphere-demo-requests --local
 ```
 
-Copy `.dev.vars.example` to `.dev.vars`, set `ADMIN_PASSWORD` and `RATE_LIMIT_SALT`, and leave `COOKIE_SECURE=false` so the admin cookie works on `http://localhost`. `.dev.vars` is gitignored.
+Copy `.dev.vars.example` to `.dev.vars`, set `ADMIN_PASSWORD` and `RATE_LIMIT_SALT`, and leave `COOKIE_SECURE=false` so the admin cookie works on `http://localhost`. The example also sets `ALLOW_LOCALHOST=true`, which is the only place localhost is allowed. Production `wrangler.toml` sets `ALLOW_LOCALHOST` to `false`. `.dev.vars` is gitignored.
 
 ```bash
 npx wrangler dev
@@ -98,7 +98,7 @@ The local API is `http://127.0.0.1:8787/api/demo-requests`. Point a local copy o
 
 8. Open `https://<your-worker>.workers.dev/admin` and sign in with `ADMIN_PASSWORD`.
 
-`ALLOWED_ORIGINS` in `wrangler.toml` already lists `https://www.spheresce.com`, `https://spheresce.com`, and this repository's GitHub Pages host (`https://<owner>.github.io`, with no repository path). `ALLOW_LOCALHOST=true` also allows `http://localhost` and `http://127.0.0.1` on any port. Change the variable and redeploy if the public origin changes.
+`ALLOWED_ORIGINS` in `wrangler.toml` lists `https://www.spheresce.com` and `https://spheresce.com`. `ALLOW_LOCALHOST` is `false` there, so localhost is not accepted in production. Append another origin to that variable at deploy time if a preview host must call the API, and do not commit an organization hostname. `.dev.vars` is what turns localhost on for `wrangler dev`.
 
 Optional rate-limit vars, if the defaults (8 demo posts per IP per hour, 8 admin sign-in attempts per IP per 15 minutes) are too tight:
 
@@ -156,7 +156,7 @@ Do not use these for this Worker:
 | Path | Purpose |
 | --- | --- |
 | `src/index.js` | Public `POST /api/demo-requests` |
-| `src/validate.js` | Shared validation. The marketing page imports this file. Do not put secrets or an endpoint in it. |
+| `../shared/demo-request-validate.js` | Shared validation. The marketing page imports this file. Do not put secrets or an endpoint in it. |
 | `src/admin.js` | `/admin` queue |
 | `src/email.js` | Notification flag, default off |
 | `migrations/0001_init.sql` | D1 schema |

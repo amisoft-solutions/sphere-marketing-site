@@ -3,7 +3,7 @@ import { corsHeaders, isAllowedOrigin } from "./cors.js";
 import { maybeNotify } from "./email.js";
 import { baseHeaders, clientIp, json, readJson } from "./http.js";
 import { consumeRateLimit, demoLimit, demoWindowMs, rateBucket } from "./rate-limit.js";
-import { validateDemoRequest } from "./validate.js";
+import { validateDemoRequest } from "../../shared/demo-request-validate.js";
 
 const RETRY = "Something went wrong while sending your request. Please try again.";
 

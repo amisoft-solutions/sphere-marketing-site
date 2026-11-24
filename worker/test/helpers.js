@@ -37,7 +37,7 @@ export function makeEnv(db, overrides = {}) {
   return {
     DB: d1(db),
     ALLOWED_ORIGINS: "https://www.spheresce.com,https://pages.example",
-    ALLOW_LOCALHOST: "true",
+    ALLOW_LOCALHOST: "false",
     NOTIFY_EMAIL_ENABLED: "false",
     EMAIL_PROVIDER: "off",
     ADMIN_PASSWORD: "correct-horse-battery",

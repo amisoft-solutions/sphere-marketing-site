@@ -46,10 +46,28 @@ python3 -m http.server 8765
 
 ## Live
 
-https://atulitllc.github.io/sphere-marketing-site/
+https://www.spheresce.com/
 
 ## Request a demo
 
 The navy contact band includes a demo request form. Required fields are full name, job title, organization, work email, and phone. The browser posts JSON to the Worker URL in `config.js`.
 
 Storage, validation, rate limiting, and the admin queue live in [`worker/`](worker/README.md). Email notifications are off until a mailbox path that does not need new DNS on spheresce.com is chosen. The queue works without email. Customer-facing copy refers to the SPHERE team.
+
+`config.js` is still a placeholder. Do not publish production while `<account>` is in that URL.
+
+## Publishing
+
+The site on www.spheresce.com is still published from the branch. This pull request does not change that setting, DNS, or `CNAME`.
+
+`.github/workflows/pages.yml` builds `_site` with `scripts/assemble-site.sh`. That directory contains the marketing files only: `index.html`, `styles.css`, `main.js`, `config.js`, `demo-form.js`, `shared/demo-request-validate.js`, `assets/`, `screenshots/`, and `CNAME`. It does not contain `worker/`.
+
+Pull requests run the build so the file list can be checked. They do not deploy. A deploy runs only if someone starts **Publish marketing site** by hand, or if a push to `main` happens after the repository variable `PAGES_SOURCE_IS_ACTIONS` is `true`.
+
+At merge time, when you are ready for Pages to stop publishing `worker/`:
+
+1. Settings → Pages → Build and deployment → Source → GitHub Actions.
+2. Run **Publish marketing site**. The workflow uploads the marketing directory and copies `CNAME` unchanged.
+3. Set the repository variable `PAGES_SOURCE_IS_ACTIONS` to `true` so later pushes to `main` publish the same way.
+
+Until step 1, the existing branch publish keeps serving the site.

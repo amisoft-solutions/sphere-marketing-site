@@ -1,0 +1,54 @@
+# Builds a marketing-only directory for GitHub Pages.
+# This does not change the live Pages source or CNAME.
+# Deploy runs only when someone starts this workflow by hand, or on pushes to
+# main after the repository variable PAGES_SOURCE_IS_ACTIONS is set to true.
+# Until then, the existing branch publish is left alone.
+
+name: Publish marketing site
+
+on:
+  pull_request:
+  push:
+    branches: [main]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+  pages: write
+  id-token: write
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Assemble marketing files
+        run: sh scripts/assemble-site.sh _site
+      - name: Confirm worker source is not published
+        run: |
+          test ! -e _site/worker
+          test ! -e _site/wrangler.toml
+          test ! -e _site/.dev.vars.example
+          test -f _site/index.html
+          test -f _site/styles.css
+          test -f _site/main.js
+          test -f _site/config.js
+          test -f _site/demo-form.js
+          test -f _site/CNAME
+          test -f _site/shared/demo-request-validate.js
+          test -d _site/assets
+      - uses: actions/upload-pages-artifact@v3
+        with:
+          path: _site
+
+  deploy:
+    needs: build
+    if: github.event_name == 'workflow_dispatch' || (github.event_name == 'push' && github.ref == 'refs/heads/main' && vars.PAGES_SOURCE_IS_ACTIONS == 'true')
+    runs-on: ubuntu-latest
+    environment:
+      name: github-pages
+      url: ${{ steps.deployment.outputs.page_url }}
+    steps:
+      - name: Deploy to GitHub Pages
+        id: deployment
+        uses: actions/deploy-pages@v4
