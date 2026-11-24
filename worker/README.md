@@ -86,17 +86,11 @@ The local API is `http://127.0.0.1:8787/api/demo-requests`. Point a local copy o
    npx wrangler deploy
    ```
 
-   Wrangler prints a URL like `https://sphere-demo-requests.<account>.workers.dev`. There is no custom domain to configure.
+   Wrangler prints a `workers.dev` URL. There is no custom domain to configure.
 
-7. In the repository root, edit `config.js` so `endpoint` is that origin plus `/api/demo-requests`:
+7. The deployed API is `https://sphere-demo-requests.aged-bonus-5453.workers.dev/api/demo-requests`. `config.js` is already set to that URL. It is the only place the page reads the endpoint. Do not put an inbox address in any file under the site root.
 
-   ```text
-   https://sphere-demo-requests.<account>.workers.dev/api/demo-requests
-   ```
-
-   Commit that URL only after the Worker is deployed. `config.js` is the only place the page reads the endpoint. Do not put an inbox address in any file under the site root.
-
-8. Open `https://<your-worker>.workers.dev/admin` and sign in with `ADMIN_PASSWORD`.
+8. Open the Worker’s `/admin` path and sign in with `ADMIN_PASSWORD`.
 
 `ALLOWED_ORIGINS` in `wrangler.toml` lists `https://www.spheresce.com` and `https://spheresce.com`. `ALLOW_LOCALHOST` is `false` there, so localhost is not accepted in production. Append another origin to that variable at deploy time if a preview host must call the API, and do not commit an organization hostname. `.dev.vars` is what turns localhost on for `wrangler dev`.
 

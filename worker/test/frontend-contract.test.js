@@ -65,8 +65,9 @@ test("the contact section keeps its copy and replaces the mailto with the form",
   assert.match(html, /aria-invalid="false"/);
   assert.equal((html.match(/href="#contact\?type=demo"/g) || []).length, 3);
   assert.match(read("main.js"), /site-nav/);
-  assert.match(read("config.js"), /https:\/\/sphere-demo-requests\.<account>\.workers\.dev\/api\/demo-requests/);
-  assert.match(read("config.js"), /Do not merge or publish production/);
+  assert.match(read("config.js"), /https:\/\/sphere-demo-requests\.aged-bonus-5453\.workers\.dev\/api\/demo-requests/);
+  assert.equal(read("config.js").includes("<account>"), false);
+  assert.equal(read("config.js").includes("Do not merge"), false);
   assert.match(read("demo-form.js"), /from "\.\/shared\/demo-request-validate\.js"/);
   assert.equal(read("demo-form.js").includes("worker/"), false);
   assert.match(read("demo-form.js"), /The SPHERE team will review the request and follow up/);

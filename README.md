@@ -52,9 +52,7 @@ https://www.spheresce.com/
 
 The navy contact band includes a demo request form. Required fields are full name, job title, organization, work email, and phone. The browser posts JSON to the Worker URL in `config.js`.
 
-Storage, validation, rate limiting, and the admin queue live in [`worker/`](worker/README.md). Email notifications are off until a mailbox path that does not need new DNS on spheresce.com is chosen. The queue works without email. Customer-facing copy refers to the SPHERE team.
-
-`config.js` is still a placeholder. Do not publish production while `<account>` is in that URL.
+Storage, validation, rate limiting, and the admin queue live in [`worker/`](worker/README.md). Email notifications are off until a mailbox path that does not need new DNS on spheresce.com is chosen. The queue works without email. Customer-facing copy refers to the SPHERE team. The form posts to the Worker URL in `config.js`.
 
 ## Publishing
 
@@ -64,10 +62,11 @@ The site on www.spheresce.com is still published from the branch. This pull requ
 
 Pull requests run the build so the file list can be checked. They do not deploy. A deploy runs only if someone starts **Publish marketing site** by hand, or if a push to `main` happens after the repository variable `PAGES_SOURCE_IS_ACTIONS` is `true`.
 
-At merge time, when you are ready for Pages to stop publishing `worker/`:
+Merge steps:
 
-1. Settings → Pages → Build and deployment → Source → GitHub Actions.
-2. Run **Publish marketing site**. The workflow uploads the marketing directory and copies `CNAME` unchanged.
-3. Set the repository variable `PAGES_SOURCE_IS_ACTIONS` to `true` so later pushes to `main` publish the same way.
+1. Merge this pull request.
+2. Settings → Pages → Source → GitHub Actions.
+3. Run **Publish marketing site**. The workflow uploads the marketing directory and copies `CNAME` unchanged.
+4. Set the repository variable `PAGES_SOURCE_IS_ACTIONS` to `true` so later pushes to `main` publish the same way.
 
 Until step 1, the existing branch publish keeps serving the site.
