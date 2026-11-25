@@ -81,6 +81,7 @@ test("worker config keeps email off and localhost closed", () => {
   assert.match(toml, /EMAIL_PROVIDER = "off"/);
   assert.match(toml, /APPROVAL_EMAIL_ENABLED = "false"/);
   assert.match(toml, /\[\[send_email\]\]/);
+  assert.match(toml, /allowed_sender_addresses = \["no-reply@spheresce.com"\]/);
   assert.equal(read("worker/src/email.js").includes("replyTo"), false);
   assert.equal(toml.includes("allowed_destination_addresses"), false);
   assert.equal(toml.includes("destination_address"), false);
