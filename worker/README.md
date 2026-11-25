@@ -31,7 +31,7 @@ The marketing page can be previewed from the repository root:
 python3 -m http.server 8765
 ```
 
-Open `http://127.0.0.1:8765/#contact?type=demo`. The form validates in the browser. It will not deliver anywhere until `config.js` points at a deployed Worker.
+Open `http://127.0.0.1:8765/#demo-request-form`. The form validates in the browser. It will not deliver anywhere until `config.js` points at a deployed Worker.
 
 For a local Worker:
 
@@ -216,4 +216,6 @@ Approval mail uses Email Sending on spheresce.com, which is the `cf-bounce` reco
 
 ## Request body
 
-JSON fields: `requestType` (`Demo request`), `fullName`, `jobTitle`, `organization`, `workEmail`, `phone`, optional `country`, `organizationType` (`Pharma/biotech`, `CRO`, `Academic`, `Other`), `interest`, `heardAbout`, `consentToContact`, `faxNumber` (honeypot, must be empty), and `formLoadedAt` (millisecond timestamp from when the form was shown).
+JSON fields are `requestType` (`Demo request`), `fullName`, `jobTitle`, `organization`, `workEmail`, `phone`, `faxNumber` (honeypot, must be empty), and `formLoadedAt` (millisecond timestamp from when the form was shown).
+
+`country`, `organization_type`, `interest`, `heard_about`, and `consent_to_contact` stay in D1. New rows leave them at the existing defaults, blank text and 0. This change does not add a migration, drop a column, or rebuild the table. Older rows keep whatever those columns already stored. The admin queue and the approval email still render when those values are missing or null.

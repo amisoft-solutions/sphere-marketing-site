@@ -22,13 +22,37 @@ const record = {
 test("notification text is an admin alert and not a demo delivery", () => {
   const text = renderAdminNotification(record, "https://worker.test/admin");
   assert.match(text, /Name - Jordan Lee/);
-  assert.match(text, /^Country or region -$/m);
-  assert.equal(text.includes("Country or region - -"), false);
+  assert.equal(text.includes("Country or region"), false);
   assert.match(text, /Organization type - CRO/);
+  assert.match(text, /Interested in - Tracker walkthrough/);
+  assert.match(text, /Heard about SPHERE - Conference/);
+  assert.match(text, /Consent to be contacted - yes/);
   assert.match(text, /Review the queue\. https:\/\/worker\.test\/admin/);
   assert.match(text, /not emailed/i);
   assert.doesNotMatch(text, /video/i);
   assert.doesNotMatch(text, /\.mp4|youtu|watch the demo/i);
+});
+
+test("notification text omits removed fields when they are missing", () => {
+  const text = renderAdminNotification(
+    {
+      ...record,
+      country: null,
+      organizationType: "",
+      interest: null,
+      heardAbout: "  ",
+      consentToContact: null,
+    },
+    "https://worker.test/admin"
+  );
+  assert.match(text, /Jordan Lee/);
+  assert.match(text, /Phone - \+1 202 555 0143/);
+  for (const label of ["Country or region", "Organization type", "Interested in", "Heard about SPHERE", "Consent to be contacted"]) {
+    assert.equal(text.includes(label), false, label);
+  }
+  assert.equal(text.includes("null"), false);
+  assert.equal(text.includes("undefined"), false);
+  assert.equal(text.includes("—"), false);
 });
 
 test("does not send mail while the feature flag is off", async () => {

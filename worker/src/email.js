@@ -28,21 +28,32 @@ export function renderAdminNotification(record, adminUrl) {
     labeled("Organization", record.organization),
     labeled("Work email", record.workEmail),
     labeled("Phone", record.phone),
-    labeled("Country or region", record.country),
-    labeled("Organization type", record.organizationType),
-    labeled("Interested in", record.interest),
-    labeled("Heard about SPHERE", record.heardAbout),
-    labeled("Consent to be contacted", record.consentToContact ? "yes" : "no"),
+  ];
+  appendFilled(lines, "Country or region", record.country);
+  appendFilled(lines, "Organization type", record.organizationType);
+  appendFilled(lines, "Interested in", record.interest);
+  appendFilled(lines, "Heard about SPHERE", record.heardAbout);
+  if (record.consentToContact != null && record.consentToContact !== "") {
+    lines.push(labeled("Consent to be contacted", record.consentToContact ? "yes" : "no"));
+  }
+  lines.push(
     labeled("Request type", record.requestType),
     labeled("Status", record.status),
     labeled("Submitted", record.createdAt),
     "",
     "The requester is not emailed by this system.",
-  ];
+  );
   if (adminUrl) {
     lines.push("", `Review the queue. ${adminUrl}`);
   }
   return lines.join("\n");
+}
+
+function appendFilled(lines, label, value) {
+  if (value == null) return;
+  const text = String(value).trim();
+  if (!text) return;
+  lines.push(labeled(label, text));
 }
 
 export async function maybeNotify(env, record, options = {}) {

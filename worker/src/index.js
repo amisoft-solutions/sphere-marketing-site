@@ -99,9 +99,8 @@ async function handleDemo(request, env) {
     await env.DB.prepare(
       `INSERT INTO demo_requests (
         id, created_at, updated_at, status, request_type, full_name, job_title,
-        organization, work_email, phone, country, organization_type, interest,
-        heard_about, consent_to_contact, user_agent
-      ) VALUES (?, ?, ?, 'pending', ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`
+        organization, work_email, phone, user_agent
+      ) VALUES (?, ?, ?, 'pending', ?, ?, ?, ?, ?, ?, ?)`
     )
       .bind(
         id,
@@ -113,11 +112,6 @@ async function handleDemo(request, env) {
         value.organization,
         value.workEmail,
         value.phone,
-        value.country,
-        value.organizationType,
-        value.interest,
-        value.heardAbout,
-        value.consentToContact ? 1 : 0,
         userAgent(request)
       )
       .run();

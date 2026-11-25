@@ -1,6 +1,7 @@
 import assert from "node:assert/strict";
 import test from "node:test";
 import worker from "../src/index.js";
+import { requestDetailItems } from "../src/admin.js";
 import { sha256Hex } from "../src/http.js";
 import { countRequests, createDb, d1, makeEnv, payload } from "./helpers.js";
 
@@ -54,8 +55,14 @@ test("stores a valid request and keeps the service document free of the admin pa
   const row = db.prepare("SELECT * FROM demo_requests").get();
   assert.equal(row.status, "pending");
   assert.equal(row.full_name, "Jordan Lee");
-  assert.equal(row.consent_to_contact, 1);
-  assert.equal(row.organization_type, "CRO");
+  assert.equal(row.job_title, "Lead Statistical Programmer");
+  assert.equal(row.organization, "Northwind Biometrics");
+  assert.equal(row.phone, "+1 202 555 0143");
+  assert.equal(row.country, "");
+  assert.equal(row.organization_type, "");
+  assert.equal(row.interest, "");
+  assert.equal(row.heard_about, "");
+  assert.equal(row.consent_to_contact, 0);
   assert.equal(row.user_agent, "SpherePreview/1.0");
   assert.equal(row.work_email, "jordan.lee@northwindbio.example");
 });
@@ -175,6 +182,8 @@ test("admin can sign in, filter, and approve without the password appearing in t
   assert.match(html, /A &amp; B Research/);
   assert.match(html, /Ann &lt;script&gt;/);
   assert.equal(html.includes("<script>"), false);
+  assert.equal(html.includes(">null<"), false);
+  assert.equal(html.includes(">undefined<"), false);
   assert.equal(html.includes(env.ADMIN_PASSWORD), false);
   const csrf = html.match(/name="csrf" value="([^"]+)"/);
   assert.ok(csrf);
@@ -285,4 +294,98 @@ test("an expired session is rejected when cleanup fails", async () => {
   assert.equal(current.status, 200);
   assert.match(currentHtml, /Sign out/);
   assert.equal(currentHtml.includes('id="password"'), false);
+});
+
+test("admin details keep older optional answers and skip blanks", () => {
+  const older = requestDetailItems({
+    job_title: "Role",
+    country: "United Kingdom",
+    organization_type: "CRO",
+    interest: "Shells and the tracker.",
+    heard_about: "Colleague",
+    consent_to_contact: 1,
+    request_type: "Demo request",
+    updated_at: "2026-11-24T00:00:00.000Z",
+  });
+  const olderLabels = older.map(([label]) => label);
+  assert.ok(olderLabels.includes("Country or region"));
+  assert.ok(olderLabels.includes("Organization type"));
+  assert.ok(olderLabels.includes("Interested in"));
+  assert.ok(olderLabels.includes("Heard about SPHERE"));
+  assert.deepEqual(
+    older.find(([label]) => label === "Consent to be contacted"),
+    ["Consent to be contacted", "Yes"]
+  );
+
+  const blank = requestDetailItems({
+    job_title: "Role",
+    country: null,
+    organization_type: "  ",
+    interest: "",
+    heard_about: null,
+    consent_to_contact: null,
+    request_type: "Demo request",
+    updated_at: "2026-11-24T00:00:00.000Z",
+  });
+  const blankLabels = blank.map(([label]) => label);
+  for (const label of ["Country or region", "Organization type", "Interested in", "Heard about SPHERE", "Consent to be contacted"]) {
+    assert.equal(blankLabels.includes(label), false, label);
+  }
+  assert.equal(JSON.stringify(blank).includes("null"), false);
+  assert.equal(JSON.stringify(blank).includes("undefined"), false);
+
+  const declined = requestDetailItems({
+    job_title: "Role",
+    consent_to_contact: 0,
+    request_type: "Demo request",
+    updated_at: "2026-11-24T00:00:00.000Z",
+  });
+  assert.deepEqual(
+    declined.find(([label]) => label === "Consent to be contacted"),
+    ["Consent to be contacted", "No"]
+  );
+});
+
+test("a short request still stores and the queue renders without the removed answers", async () => {
+  const db = createDb();
+  const env = makeEnv(db);
+  const sent = await postDemo(
+    env,
+    payload({
+      country: "United States",
+      organizationType: "CRO",
+      interest: "Tracker",
+      heardAbout: "Conference",
+      consentToContact: true,
+    }),
+    { ip: "203.0.113.61" }
+  );
+  assert.equal(sent.response.status, 201);
+  const row = db.prepare("SELECT * FROM demo_requests").get();
+  assert.equal(row.country, "");
+  assert.equal(row.organization_type, "");
+  assert.equal(row.interest, "");
+  assert.equal(row.heard_about, "");
+  assert.equal(row.consent_to_contact, 0);
+
+  const login = await worker.fetch(
+    new Request("https://worker.test/admin/login", {
+      method: "POST",
+      headers: { "Content-Type": "application/x-www-form-urlencoded", "CF-Connecting-IP": "203.0.113.62" },
+      body: `password=${encodeURIComponent(env.ADMIN_PASSWORD)}`,
+    }),
+    env
+  );
+  const cookie = (login.headers.get("Set-Cookie") || "").match(/sphere_admin=([^;]*)/)[1];
+  const page = await worker.fetch(
+    new Request("https://worker.test/admin", { headers: { Cookie: `sphere_admin=${cookie}` } }),
+    env
+  );
+  const html = await page.text();
+  assert.equal(page.status, 200);
+  assert.match(html, /Jordan Lee/);
+  assert.equal(html.includes("Country or region"), false);
+  assert.equal(html.includes("Organization type"), false);
+  assert.equal(html.includes("Heard about SPHERE"), false);
+  assert.match(html, /<dt>Consent to be contacted<\/dt><dd>No<\/dd>/);
 });
