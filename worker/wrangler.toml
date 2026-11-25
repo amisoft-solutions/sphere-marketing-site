@@ -39,7 +39,7 @@ EMAIL_PROVIDER = "off"
 # Approval mail to the requester. Leave false until https://video.spheresce.com resolves
 # and spheresce.com is onboarded to Email Sending. The message has no response address.
 APPROVAL_EMAIL_ENABLED = "false"
-EMAIL_FROM = "Logic Pursuits Representative <no-reply@spheresce.com>"
+EMAIL_FROM = "Logic Pursuits <no-reply@spheresce.com>"
 VIDEO_URL = "https://video.spheresce.com"
 VIDEO_LINK_TTL_DAYS = "7"
 
