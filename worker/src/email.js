@@ -23,21 +23,32 @@ export function renderAdminNotification(record, adminUrl) {
     `Organization: ${record.organization}`,
     `Work email: ${record.workEmail}`,
     `Phone: ${record.phone}`,
-    `Country or region: ${record.country || "—"}`,
-    `Organization type: ${record.organizationType || "—"}`,
-    `Interested in: ${record.interest || "—"}`,
-    `Heard about SPHERE: ${record.heardAbout || "—"}`,
-    `Consent to be contacted: ${record.consentToContact ? "yes" : "no"}`,
+  ];
+  appendFilled(lines, "Country or region", record.country);
+  appendFilled(lines, "Organization type", record.organizationType);
+  appendFilled(lines, "Interested in", record.interest);
+  appendFilled(lines, "Heard about SPHERE", record.heardAbout);
+  if (record.consentToContact != null && record.consentToContact !== "") {
+    lines.push(`Consent to be contacted: ${record.consentToContact ? "yes" : "no"}`);
+  }
+  lines.push(
     `Request type: ${record.requestType}`,
     `Status: ${record.status}`,
     `Submitted: ${record.createdAt}`,
     "",
     "The requester is not emailed by this system.",
-  ];
+  );
   if (adminUrl) {
     lines.push("", `Review the queue: ${adminUrl}`);
   }
   return lines.join("\n");
+}
+
+function appendFilled(lines, label, value) {
+  if (value == null) return;
+  const text = String(value).trim();
+  if (!text) return;
+  lines.push(`${label}: ${text}`);
 }
 
 export async function maybeNotify(env, record, options = {}) {

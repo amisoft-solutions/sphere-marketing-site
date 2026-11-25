@@ -5,8 +5,6 @@
 
 export const REQUEST_TYPE_DEMO = "Demo request";
 
-export const ORGANIZATION_TYPES = ["Pharma/biotech", "CRO", "Academic", "Other"];
-
 export const MIN_SUBMIT_MS = 2500;
 export const MAX_FORM_AGE_MS = 48 * 60 * 60 * 1000;
 export const CLOCK_SKEW_MS = 10 * 60 * 1000;
@@ -20,17 +18,10 @@ const LIMITS = {
   organization: 160,
   workEmail: 254,
   phone: 32,
-  country: 80,
-  interest: 1000,
-  heardAbout: 160,
 };
 
 function hasLetter(value) {
   return /\p{L}/u.test(value);
-}
-
-function hasLetterOrNumber(value) {
-  return /[\p{L}\p{N}]/u.test(value);
 }
 
 function cleanSingleLine(value) {
@@ -100,27 +91,6 @@ export function validateDemoRequest(raw, now = Date.now()) {
     }
   }
 
-  const country = readOptionalLine(body.country, LIMITS.country, fields, "country", "Country or region");
-  const interest = readOptionalText(body.interest, LIMITS.interest, fields, "interest", "What you are interested in");
-  const heardAbout = readOptionalLine(
-    body.heardAbout,
-    LIMITS.heardAbout,
-    fields,
-    "heardAbout",
-    "How you heard about SPHERE"
-  );
-
-  let organizationType = "";
-  if (body.organizationType !== undefined && body.organizationType !== null && body.organizationType !== "") {
-    if (typeof body.organizationType !== "string" || !ORGANIZATION_TYPES.includes(body.organizationType)) {
-      fields.organizationType = "Choose a listed organization type, or leave it blank.";
-    } else {
-      organizationType = body.organizationType;
-    }
-  }
-
-  const consent = readConsent(body.consentToContact, fields);
-
   if (Object.keys(fields).length > 0) {
     return {
       ok: false,
@@ -149,11 +119,6 @@ export function validateDemoRequest(raw, now = Date.now()) {
       organization,
       workEmail,
       phone,
-      country,
-      organizationType,
-      interest,
-      heardAbout,
-      consentToContact: consent,
     },
   };
 }
@@ -230,55 +195,4 @@ function readLine(value, max, fields, key, { label, missing, requireLetter }) {
     return "";
   }
   return cleaned;
-}
-
-function readOptionalLine(value, max, fields, key, label) {
-  if (value === undefined || value === null || value === "") return "";
-  if (typeof value !== "string") {
-    fields[key] = `${label} cannot include those characters.`;
-    return "";
-  }
-  const cleaned = cleanSingleLine(value);
-  if (!cleaned) return "";
-  if (cleaned.length > max) {
-    fields[key] = `${label} must be ${max} characters or fewer.`;
-    return "";
-  }
-  if (invalidChars(cleaned) || !hasLetterOrNumber(cleaned)) {
-    fields[key] = `${label} cannot include those characters.`;
-    return "";
-  }
-  return cleaned;
-}
-
-function readOptionalText(value, max, fields, key, label) {
-  if (value === undefined || value === null || value === "") return "";
-  if (typeof value !== "string") {
-    fields[key] = `${label} must be ${max} characters or fewer.`;
-    return "";
-  }
-  const cleaned = value.replace(/\r\n/g, "\n").replace(/\t/g, " ").trim();
-  if (!cleaned) return "";
-  if (cleaned.length > max) {
-    fields[key] = `${label} must be ${max} characters or fewer.`;
-    return "";
-  }
-  if (/[<>\u0000-\u0008\u000B\u000C\u000E-\u001F\u007F]/.test(cleaned) || !hasLetterOrNumber(cleaned)) {
-    fields[key] = `${label} cannot include those characters.`;
-    return "";
-  }
-  return cleaned;
-}
-
-function readConsent(value, fields) {
-  if (value === undefined || value === null || value === "" || value === false) return false;
-  if (value === true || value === 1) return true;
-  if (typeof value === "string") {
-    const token = value.trim().toLowerCase();
-    if (token === "true" || token === "on" || token === "yes" || token === "1") return true;
-    if (token === "false" || token === "off" || token === "no" || token === "0") return false;
-  }
-  if (value === 0) return false;
-  fields.consentToContact = "Choose whether the SPHERE team may contact you, or leave the box unchecked.";
-  return false;
 }

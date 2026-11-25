@@ -1,5 +1,5 @@
 import assert from "node:assert/strict";
-import { existsSync, readFileSync } from "node:fs";
+import { existsSync, readdirSync, readFileSync } from "node:fs";
 import test from "node:test";
 
 const root = new URL("../../", import.meta.url);
@@ -60,11 +60,19 @@ test("the contact section keeps its copy and replaces the mailto with the form",
   assert.match(html, /name="organization"/);
   assert.match(html, /name="workEmail"/);
   assert.match(html, /name="phone"/);
-  assert.match(html, /name="consentToContact"/);
-  assert.match(html, /Pharma\/biotech/);
+  assert.match(html, /name="fax_number"/);
+  assert.match(html, /name="requestType"/);
+  assert.equal(html.includes('name="country"'), false);
+  assert.equal(html.includes('name="organizationType"'), false);
+  assert.equal(html.includes('name="interest"'), false);
+  assert.equal(html.includes('name="heardAbout"'), false);
+  assert.equal(html.includes('name="consentToContact"'), false);
   assert.match(html, /aria-describedby="full-name-error"/);
   assert.match(html, /aria-invalid="false"/);
-  assert.equal((html.match(/href="#contact\?type=demo"/g) || []).length, 3);
+  assert.equal((html.match(/href="#demo-request-form"/g) || []).length, 3);
+  assert.equal(html.includes("#contact?type=demo"), false);
+  assert.match(read("demo-form.js"), /#demo-request-form/);
+  assert.match(read("demo-form.js"), /#contact\?type=demo/);
   assert.match(read("main.js"), /site-nav/);
   assert.match(read("config.js"), /https:\/\/sphere-demo-requests\.aged-bonus-5453\.workers\.dev\/api\/demo-requests/);
   assert.equal(read("config.js").includes("<account>"), false);
@@ -73,6 +81,17 @@ test("the contact section keeps its copy and replaces the mailto with the form",
   assert.equal(read("demo-form.js").includes("worker/"), false);
   assert.match(read("demo-form.js"), /The SPHERE team will review the request and follow up/);
   assert.equal(existsSync(new URL("worker/src/validate.js", root)), false);
+});
+
+test("demo request migrations do not drop columns or rebuild the table", () => {
+  const names = readdirSync(new URL("worker/migrations/", root));
+  assert.ok(names.includes("0001_init.sql"));
+  assert.equal(names.some((name) => /0004/.test(name)), false);
+  for (const name of names) {
+    const sql = read(`worker/migrations/${name}`);
+    assert.equal(/drop\s+column/i.test(sql), false, name);
+    assert.equal(/drop\s+table/i.test(sql), false, name);
+  }
 });
 
 test("worker config keeps email off and localhost closed", () => {

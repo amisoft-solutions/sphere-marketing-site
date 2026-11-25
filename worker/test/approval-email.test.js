@@ -260,6 +260,41 @@ test("rejected and pending requests are not emailed", async () => {
   assert.equal(db.prepare("SELECT approval_email_sent_at FROM demo_requests WHERE id = ?").get(id).approval_email_sent_at, null);
 });
 
+test("approval email wording stays the same when removed fields are null", () => {
+  const rendered = renderApprovalEmail(
+    {
+      full_name: "Jordan Lee",
+      country: null,
+      organization_type: null,
+      interest: null,
+      heard_about: null,
+      consent_to_contact: null,
+    },
+    `${VIDEO}/v/example.token`,
+    7
+  );
+  assert.equal(
+    rendered.text,
+    [
+      "Hello Jordan Lee,",
+      "",
+      "A Logic Pursuits Representative approved your demo request. You can watch the demo here:",
+      `${VIDEO}/v/example.token`,
+      "",
+      "This link expires in 7 days.",
+      "",
+      "Logic Pursuits Representative",
+    ].join("\n")
+  );
+  assert.match(rendered.html, /<p>Hello Jordan Lee,<\/p>/);
+  assert.match(rendered.html, /<p>A Logic Pursuits Representative approved your demo request\. You can watch the demo here:<\/p>/);
+  assert.match(rendered.html, /<p>Logic Pursuits Representative<\/p>/);
+  assert.equal(rendered.text.includes("null"), false);
+  assert.equal(rendered.html.includes("null"), false);
+  assert.equal(rendered.text.includes("undefined"), false);
+  assert.equal(rendered.html.includes("undefined"), false);
+});
+
 test("a missing video link lifetime defaults to 7 days", () => {
   assert.equal(videoLinkTtlDays({}), 7);
   assert.equal(videoLinkTtlDays({ VIDEO_LINK_TTL_DAYS: "0" }), 7);
