@@ -169,7 +169,7 @@ export function renderApprovalEmail(row, link, expiresAt) {
     "Someone from Logic Pursuits will contact you soon to schedule a live demo.",
     "",
     "Thanks,",
-    "Logic Pursuits Representative",
+    "Logic Pursuits",
   ].join("\n");
   const safeGreeting = name ? `Hello ${escapeHtml(name)},` : "Hello,";
   const safeUrl = escapeHtml(url);
@@ -180,7 +180,7 @@ export function renderApprovalEmail(row, link, expiresAt) {
     `<p>${escapeHtml(expiryLine)}</p>`,
     "<p>Someone from Logic Pursuits will contact you soon to schedule a live demo.</p>",
     "<p>Thanks,</p>",
-    "<p>Logic Pursuits Representative</p>",
+    "<p>Logic Pursuits</p>",
   ].join("");
   return { subject: "Your SPHERE demo", text, html };
 }

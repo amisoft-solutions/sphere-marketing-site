@@ -6,7 +6,7 @@ import { formatVideoExpiry, renderApprovalEmail, sendApprovalEmail, videoLinkTtl
 import worker from "../src/index.js";
 import { countRequests, createDb, makeEnv, payload } from "./helpers.js";
 
-const FROM = "Logic Pursuits Representative <no-reply@spheresce.com>";
+const FROM = "Logic Pursuits <no-reply@spheresce.com>";
 const VIDEO = "https://video.spheresce.com";
 
 function mailEnv(db, overrides = {}) {
@@ -112,7 +112,7 @@ test("approving sends the video link once, and approving again does not", async 
   assert.equal(approved.status, 303);
   assert.equal(env.sends.length, 1);
   assert.equal(env.sends[0].to, "jordan.lee@northwindbio.example");
-  assert.deepEqual(env.sends[0].from, { name: "Logic Pursuits Representative", email: "no-reply@spheresce.com" });
+  assert.deepEqual(env.sends[0].from, { name: "Logic Pursuits", email: "no-reply@spheresce.com" });
   assert.equal(env.sends[0].replyTo, undefined);
   assert.equal(env.sends[0].subject, "Your SPHERE demo");
   assert.match(env.sends[0].text, /^Hello Jordan Lee,\n/);
@@ -127,8 +127,10 @@ test("approving sends the video link once, and approving again does not", async 
   assert.match(env.sends[0].html, new RegExp(`This link is just for you and expires on ${expiryLabel.replace(/\./g, "\\.")}\\.`));
   assert.match(env.sends[0].text, /Someone from Logic Pursuits will contact you soon to schedule a live demo\./);
   assert.match(env.sends[0].html, /Someone from Logic Pursuits will contact you soon to schedule a live demo\./);
-  assert.match(env.sends[0].text, /\nThanks,\nLogic Pursuits Representative$/);
-  assert.match(env.sends[0].html, /<p>Thanks,<\/p><p>Logic Pursuits Representative<\/p>$/);
+  assert.match(env.sends[0].text, /\nThanks,\nLogic Pursuits$/);
+  assert.match(env.sends[0].html, /<p>Thanks,<\/p><p>Logic Pursuits<\/p>$/);
+  assert.equal(env.sends[0].text.includes("Representative"), false);
+  assert.equal(env.sends[0].html.includes("Representative"), false);
   assert.equal(env.sends[0].text.includes("The SPHERE team approved"), false);
   assert.equal(env.sends[0].html.includes("The SPHERE team approved"), false);
   assertNoBannedPunctuation(env.sends[0].text);
@@ -281,8 +283,10 @@ test("approval HTML escapes the name and does not use a response address", async
   assert.match(rendered.html, /<p>Here is a quick overview video to help you get started\.<\/p>/);
   assert.match(rendered.text, /Someone from Logic Pursuits will contact you soon to schedule a live demo\./);
   assert.match(rendered.html, /<p>Someone from Logic Pursuits will contact you soon to schedule a live demo\.<\/p>/);
-  assert.match(rendered.text, /\nThanks,\nLogic Pursuits Representative$/);
-  assert.match(rendered.html, /<p>Thanks,<\/p><p>Logic Pursuits Representative<\/p>$/);
+  assert.match(rendered.text, /\nThanks,\nLogic Pursuits$/);
+  assert.match(rendered.html, /<p>Thanks,<\/p><p>Logic Pursuits<\/p>$/);
+  assert.equal(rendered.text.includes("Representative"), false);
+  assert.equal(rendered.html.includes("Representative"), false);
   assert.equal(rendered.text.includes("The SPHERE team approved"), false);
   assert.equal(rendered.html.includes("The SPHERE team approved"), false);
   assert.equal(formatVideoExpiry(expiresAt), "December 2, 2026 UTC");
