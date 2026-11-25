@@ -1,0 +1,236 @@
+import assert from "node:assert/strict";
+import test from "node:test";
+import { deliverApprovalEmail } from "../src/admin.js";
+import { renderApprovalEmail, sendApprovalEmail } from "../src/email.js";
+import worker from "../src/index.js";
+import { countRequests, createDb, makeEnv, payload } from "./helpers.js";
+
+const FROM = "SPHERE team <no-reply@spheresce.com>";
+const VIDEO = "https://video.spheresce.com";
+
+function mailEnv(db, overrides = {}) {
+  const sends = [];
+  const env = makeEnv(db, {
+    APPROVAL_EMAIL_ENABLED: "true",
+    EMAIL_FROM: FROM,
+    VIDEO_URL: VIDEO,
+    SEND_EMAIL: {
+      send: async (message) => {
+        sends.push(message);
+      },
+    },
+    ...overrides,
+  });
+  env.sends = sends;
+  return env;
+}
+
+async function postDemo(env, body, ip) {
+  const response = await worker.fetch(
+    new Request("https://worker.test/api/demo-requests", {
+      method: "POST",
+      headers: { "Content-Type": "application/json", "CF-Connecting-IP": ip },
+      body: JSON.stringify(body),
+    }),
+    env
+  );
+  assert.equal(response.status, 201, await response.clone().text());
+}
+
+async function signIn(env, ip) {
+  const login = await worker.fetch(
+    new Request("https://worker.test/admin/login", {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/x-www-form-urlencoded",
+        "CF-Connecting-IP": ip,
+      },
+      body: `password=${encodeURIComponent(env.ADMIN_PASSWORD)}`,
+    }),
+    env
+  );
+  assert.equal(login.status, 303);
+  const cookie = (login.headers.get("Set-Cookie") || "").match(/sphere_admin=([^;]*)/)[1];
+  const page = await worker.fetch(
+    new Request("https://worker.test/admin", { headers: { Cookie: `sphere_admin=${cookie}` } }),
+    env
+  );
+  const html = await page.text();
+  const csrf = html.match(/name="csrf" value="([^"]+)"/)[1];
+  return { cookie, csrf };
+}
+
+async function postForm(env, path, cookie, body) {
+  return worker.fetch(
+    new Request(`https://worker.test${path}`, {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/x-www-form-urlencoded",
+        Cookie: `sphere_admin=${cookie}`,
+      },
+      body,
+    }),
+    env
+  );
+}
+
+test("approving sends the video link once, and approving again does not", async () => {
+  const db = createDb();
+  const env = mailEnv(db);
+  await postDemo(env, payload({ fullName: "Jordan Lee" }), "203.0.113.80");
+  const { cookie, csrf } = await signIn(env, "203.0.113.81");
+  const id = db.prepare("SELECT id FROM demo_requests").get().id;
+
+  const approved = await postForm(env, `/admin/requests/${id}`, cookie, `csrf=${csrf}&status=approved`);
+  assert.equal(approved.status, 303);
+  assert.equal(env.sends.length, 1);
+  assert.equal(env.sends[0].to, "jordan.lee@northwindbio.example");
+  assert.deepEqual(env.sends[0].from, { name: "SPHERE team", email: "no-reply@spheresce.com" });
+  assert.equal(env.sends[0].replyTo, undefined);
+  assert.match(env.sends[0].text, /Hello Jordan Lee,/);
+  assert.match(env.sends[0].text, /https:\/\/video\.spheresce\.com/);
+  assert.match(env.sends[0].text, /the SPHERE team/);
+  const row = db.prepare("SELECT approval_email_sent_at, approval_email_claimed_at, approval_email_error FROM demo_requests WHERE id = ?").get(id);
+  assert.ok(row.approval_email_sent_at);
+  assert.equal(row.approval_email_claimed_at, null);
+  assert.equal(row.approval_email_error, null);
+
+  const again = await postForm(env, `/admin/requests/${id}`, cookie, `csrf=${csrf}&status=rejected`);
+  assert.equal(again.status, 303);
+  const reapproved = await postForm(env, `/admin/requests/${id}`, cookie, `csrf=${csrf}&status=approved`);
+  assert.equal(reapproved.status, 303);
+  assert.equal(env.sends.length, 1);
+  assert.equal(db.prepare("SELECT status FROM demo_requests WHERE id = ?").get(id).status, "approved");
+});
+
+test("only one of two overlapping sends claims the row", async () => {
+  const db = createDb();
+  let release;
+  const gate = new Promise((resolve) => {
+    release = resolve;
+  });
+  let started = 0;
+  const env = mailEnv(db, {
+    SEND_EMAIL: {
+      send: async () => {
+        started += 1;
+        await gate;
+      },
+    },
+  });
+  await postDemo(env, payload(), "203.0.113.82");
+  const id = db.prepare("SELECT id FROM demo_requests").get().id;
+  db.prepare("UPDATE demo_requests SET status = 'approved' WHERE id = ?").run(id);
+
+  const first = deliverApprovalEmail(env, id);
+  const second = deliverApprovalEmail(env, id);
+  await new Promise((resolve) => setImmediate(resolve));
+  assert.equal(started, 1);
+  release();
+  const results = await Promise.all([first, second]);
+  assert.equal(results.filter((result) => result.sent).length, 1);
+  assert.equal(results.filter((result) => result.reason === "not-claimed").length, 1);
+  assert.equal(env.sends ? started : started, 1);
+});
+
+test("a failed send can be resent, and a bad token cannot", async () => {
+  const db = createDb();
+  let fail = true;
+  const env = mailEnv(db, {
+    SEND_EMAIL: {
+      send: async (message) => {
+        env.sends.push(message);
+        if (fail) throw new Error("mailbox unavailable");
+      },
+    },
+  });
+  await postDemo(env, payload({ fullName: "Jordan Lee" }), "203.0.113.83");
+  const { cookie, csrf } = await signIn(env, "203.0.113.84");
+  const id = db.prepare("SELECT id FROM demo_requests").get().id;
+  const approved = await postForm(env, `/admin/requests/${id}`, cookie, `csrf=${csrf}&status=approved&return_status=approved`);
+  assert.equal(approved.status, 303);
+  const failed = db.prepare("SELECT approval_email_sent_at, approval_email_claimed_at, approval_email_error FROM demo_requests WHERE id = ?").get(id);
+  assert.equal(failed.approval_email_sent_at, null);
+  assert.equal(failed.approval_email_claimed_at, null);
+  assert.match(failed.approval_email_error, /mailbox unavailable/);
+
+  const page = await worker.fetch(
+    new Request("https://worker.test/admin?status=approved", { headers: { Cookie: `sphere_admin=${cookie}` } }),
+    env
+  );
+  const html = await page.text();
+  assert.match(html, /Failed: mailbox unavailable/);
+  assert.match(html, /Resend email/);
+  assert.match(html, /Approving emails the requester the demo video link/);
+
+  const forged = await postForm(env, `/admin/requests/${id}/resend`, cookie, "csrf=nope");
+  assert.equal(forged.status, 403);
+  assert.equal(env.sends.length, 1);
+
+  fail = false;
+  const resent = await postForm(env, `/admin/requests/${id}/resend`, cookie, `csrf=${csrf}&return_status=approved`);
+  assert.equal(resent.status, 303);
+  assert.equal(env.sends.length, 2);
+  const sent = db.prepare("SELECT approval_email_sent_at, approval_email_error, approval_email_claimed_at FROM demo_requests WHERE id = ?").get(id);
+  assert.ok(sent.approval_email_sent_at);
+  assert.equal(sent.approval_email_error, null);
+  assert.equal(sent.approval_email_claimed_at, null);
+  assert.equal(countRequests(db), 1);
+});
+
+test("approval email stays off when the flag is off", async () => {
+  const db = createDb();
+  const env = mailEnv(db, { APPROVAL_EMAIL_ENABLED: "false" });
+  await postDemo(env, payload(), "203.0.113.85");
+  const { cookie, csrf } = await signIn(env, "203.0.113.86");
+  const id = db.prepare("SELECT id FROM demo_requests").get().id;
+  const approved = await postForm(env, `/admin/requests/${id}`, cookie, `csrf=${csrf}&status=approved`);
+  assert.equal(approved.status, 303);
+  assert.equal(env.sends.length, 0);
+  const row = db.prepare("SELECT status, approval_email_sent_at FROM demo_requests WHERE id = ?").get(id);
+  assert.equal(row.status, "approved");
+  assert.equal(row.approval_email_sent_at, null);
+  const page = await worker.fetch(
+    new Request("https://worker.test/admin", { headers: { Cookie: `sphere_admin=${cookie}` } }),
+    env
+  );
+  assert.match(await page.text(), /Approval email is off/);
+});
+
+test("rejected and pending requests are not emailed", async () => {
+  const db = createDb();
+  const env = mailEnv(db);
+  await postDemo(env, payload(), "203.0.113.87");
+  const { cookie, csrf } = await signIn(env, "203.0.113.88");
+  const id = db.prepare("SELECT id FROM demo_requests").get().id;
+  const rejected = await postForm(env, `/admin/requests/${id}`, cookie, `csrf=${csrf}&status=rejected`);
+  assert.equal(rejected.status, 303);
+  assert.deepEqual(await deliverApprovalEmail(env, id), { sent: false, reason: "not-claimed" });
+  db.prepare("UPDATE demo_requests SET status = 'pending' WHERE id = ?").run(id);
+  assert.equal((await deliverApprovalEmail(env, id)).reason, "not-claimed");
+  assert.equal(env.sends.length, 0);
+  assert.equal(db.prepare("SELECT approval_email_sent_at FROM demo_requests WHERE id = ?").get(id).approval_email_sent_at, null);
+});
+
+test("approval HTML escapes the name and does not use a response address", async () => {
+  const name = `Ann <script> & "quotes"`;
+  const rendered = renderApprovalEmail({ full_name: name }, VIDEO);
+  assert.match(rendered.html, /Ann &lt;script&gt; &amp; &quot;quotes&quot;/);
+  assert.equal(rendered.html.includes("<script>"), false);
+  assert.match(rendered.text, /Hello Ann <script> & "quotes",/);
+  assert.match(rendered.html, /the SPHERE team/);
+
+  const db = createDb();
+  const env = mailEnv(db);
+  const id = "33333333-3333-4333-8333-333333333333";
+  db.prepare(
+    `INSERT INTO demo_requests (
+      id, created_at, updated_at, status, request_type, full_name, job_title, organization,
+      work_email, phone, consent_to_contact
+    ) VALUES (?, ?, ?, 'approved', 'Demo request', ?, 'Role', 'Org', 'person@example.com', '+1 202 555 0199', 0)`
+  ).run(id, "2026-11-24T00:00:00.000Z", "2026-11-24T00:00:00.000Z", name);
+  const result = await sendApprovalEmail(env, db.prepare("SELECT * FROM demo_requests WHERE id = ?").get(id));
+  assert.equal(result.sent, true);
+  assert.equal(env.sends[0].html.includes("<script>"), false);
+  assert.equal(Object.hasOwn(env.sends[0], "replyTo"), false);
+});

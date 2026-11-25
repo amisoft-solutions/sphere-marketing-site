@@ -9,6 +9,7 @@ import {
   sha256Hex,
   timingSafeEqual,
 } from "./http.js";
+import { approvalEmailEnabled, sendApprovalEmail } from "./email.js";
 import { adminLoginLimit, adminLoginWindowMs, consumeRateLimit, rateBucket } from "./rate-limit.js";
 
 const SESSION_MS = 12 * 60 * 60 * 1000;
@@ -23,6 +24,10 @@ export async function handleAdmin(request, env) {
   }
   if (url.pathname === "/admin/logout" && request.method === "POST") {
     return logout(request, env);
+  }
+  const resendMatch = url.pathname.match(/^\/admin\/requests\/([0-9a-f-]+)\/resend$/i);
+  if (resendMatch && request.method === "POST") {
+    return resendApproval(request, env, resendMatch[1]);
   }
   const statusMatch = url.pathname.match(/^\/admin\/requests\/([0-9a-f-]+)$/i);
   if (statusMatch && request.method === "POST") {
@@ -102,7 +107,7 @@ async function listPage(request, env, url) {
     : await env.DB.prepare(
       "SELECT * FROM demo_requests WHERE status = ? ORDER BY created_at DESC LIMIT 200"
     ).bind(filter).all();
-  return html(queueDocument(session.csrf_token, filter, counts, rows.results || []), 200);
+  return html(queueDocument(session.csrf_token, filter, counts, rows.results || [], approvalEmailEnabled(env)), 200);
 }
 
 async function updateStatus(request, env, id) {
@@ -118,17 +123,80 @@ async function updateStatus(request, env, id) {
     return html(queueMessage("Choose pending, approved, or rejected."), 400);
   }
   const updated = new Date().toISOString();
-  const result = await env.DB.prepare(
+  const existing = await env.DB.prepare("SELECT id FROM demo_requests WHERE id = ?").bind(id).first();
+  if (!existing) return text("Not found", 404);
+  await env.DB.prepare(
     "UPDATE demo_requests SET status = ?, updated_at = ? WHERE id = ?"
   )
     .bind(status, updated, id)
     .run();
-  if (!result.meta || result.meta.changes < 1) return text("Not found", 404);
+  if (status === "approved") await deliverApprovalEmail(env, id);
   const back = STATUSES.includes(String(body.return_status || "")) ? `?status=${body.return_status}` : "";
   return new Response(null, {
     status: 303,
     headers: baseHeaders({ Location: `/admin${back}` }),
   });
+}
+
+async function resendApproval(request, env, id) {
+  const session = await loadSession(request, env);
+  if (!session) return html(loginDocument("Sign in to update a request."), 401);
+  if (!UUID_RE.test(id)) return text("Not found", 404);
+  const body = await readBodyObject(request);
+  if (!timingSafeEqual(String(body.csrf || ""), session.csrf_token)) {
+    return html(queueMessage("The page expired. Reload it and try again."), 403);
+  }
+  if (!approvalEmailEnabled(env)) {
+    return html(queueMessage("Approval email is off."), 400);
+  }
+  const row = await env.DB.prepare(
+    "SELECT status, approval_email_sent_at, approval_email_error FROM demo_requests WHERE id = ?"
+  ).bind(id).first();
+  if (!row) return text("Not found", 404);
+  if (row.status !== "approved" || row.approval_email_sent_at || !row.approval_email_error) {
+    return html(queueMessage("This request does not have a failed approval email to resend."), 400);
+  }
+  await deliverApprovalEmail(env, id);
+  const back = STATUSES.includes(String(body.return_status || "")) ? `?status=${body.return_status}` : "";
+  return new Response(null, {
+    status: 303,
+    headers: baseHeaders({ Location: `/admin${back}` }),
+  });
+}
+
+export async function deliverApprovalEmail(env, id) {
+  if (!approvalEmailEnabled(env)) return { sent: false, reason: "disabled" };
+  const claimAt = new Date().toISOString();
+  const claim = await env.DB.prepare(
+    `UPDATE demo_requests
+     SET approval_email_claimed_at = ?
+     WHERE id = ?
+       AND status = 'approved'
+       AND approval_email_sent_at IS NULL
+       AND approval_email_claimed_at IS NULL`
+  ).bind(claimAt, id).run();
+  if (!claim.meta || claim.meta.changes < 1) return { sent: false, reason: "not-claimed" };
+  const row = await env.DB.prepare(
+    "SELECT id, full_name, work_email, status FROM demo_requests WHERE id = ?"
+  ).bind(id).first();
+  try {
+    const sent = await sendApprovalEmail(env, row);
+    if (!sent || !sent.sent) throw new Error("Approval email was not sent.");
+    await env.DB.prepare(
+      `UPDATE demo_requests
+       SET approval_email_sent_at = ?, approval_email_error = NULL, approval_email_claimed_at = NULL
+       WHERE id = ? AND approval_email_claimed_at = ?`
+    ).bind(new Date().toISOString(), id, claimAt).run();
+    return { sent: true };
+  } catch (err) {
+    const message = String((err && err.message) || "Email sending failed").slice(0, 500);
+    await env.DB.prepare(
+      `UPDATE demo_requests
+       SET approval_email_error = ?, approval_email_claimed_at = NULL
+       WHERE id = ? AND approval_email_claimed_at = ?`
+    ).bind(message, id, claimAt).run();
+    return { sent: false, reason: "error", error: message };
+  }
 }
 
 async function loadSession(request, env) {
@@ -219,7 +287,7 @@ function queueMessage(message) {
   return layout("Demo requests", `<main><p class="alert" role="alert">${escapeHtml(message)}</p><p><a href="/admin">Back to the queue</a></p></main>`);
 }
 
-function queueDocument(csrf, filter, counts, rows) {
+function queueDocument(csrf, filter, counts, rows, emailOn) {
   const filters = ["all", ...STATUSES].map((status) => {
     const href = status === "all" ? "/admin" : `/admin?status=${status}`;
     const current = status === filter ? ` aria-current="page"` : "";
@@ -228,8 +296,8 @@ function queueDocument(csrf, filter, counts, rows) {
   }).join("");
 
   const bodyRows = rows.length
-    ? rows.map((row) => renderRow(row, csrf, filter)).join("")
-    : `<tr><td colspan="7">No demo requests in this view.</td></tr>`;
+    ? rows.map((row) => renderRow(row, csrf, filter, emailOn)).join("")
+    : `<tr><td colspan="8">No demo requests in this view.</td></tr>`;
 
   return layout(
     "Demo requests",
@@ -238,7 +306,7 @@ function queueDocument(csrf, filter, counts, rows) {
       <form method="post" action="/admin/logout"><button type="submit">Sign out</button></form>
     </header>
     <main>
-      <p class="note">Approving or rejecting a request only updates this queue. It does not email the requester and it does not send a demo link.</p>
+      <p class="note">${emailOn ? "Approving emails the requester the demo video link." : "Approval email is off."}</p>
       <nav class="filters" aria-label="Filter by status">${filters}</nav>
       <div class="table-wrap">
         <table>
@@ -250,6 +318,7 @@ function queueDocument(csrf, filter, counts, rows) {
               <th scope="col">Work email</th>
               <th scope="col">Phone</th>
               <th scope="col">Status</th>
+              <th scope="col">Email</th>
               <th scope="col">Actions</th>
             </tr>
           </thead>
@@ -260,7 +329,7 @@ function queueDocument(csrf, filter, counts, rows) {
   );
 }
 
-function renderRow(row, csrf, filter) {
+function renderRow(row, csrf, filter, emailOn) {
   const details = [
     ["Job title", row.job_title],
     ["Country or region", row.country],
@@ -270,6 +339,7 @@ function renderRow(row, csrf, filter) {
     ["Consent to be contacted", Number(row.consent_to_contact) ? "Yes" : "No"],
     ["Request type", row.request_type],
     ["Updated", formatWhen(row.updated_at)],
+    ["Approval email", emailStatus(row).detail],
   ].map(([label, value]) => `<div><dt>${escapeHtml(label)}</dt><dd>${escapeHtml(value || "—")}</dd></div>`).join("");
 
   const actions = STATUSES.map((status) => {
@@ -289,11 +359,33 @@ function renderRow(row, csrf, filter) {
     <td>${escapeHtml(row.work_email)}</td>
     <td>${escapeHtml(row.phone)}</td>
     <td>${escapeHtml(row.status)}</td>
+    <td>${emailCell(row, csrf, filter, emailOn)}</td>
     <td class="actions">
       ${actions}
       <details><summary>Details</summary><dl>${details}</dl></details>
     </td>
   </tr>`;
+}
+
+function emailStatus(row) {
+  if (row.approval_email_sent_at) {
+    return { detail: `Sent ${formatWhen(row.approval_email_sent_at)}`, failed: false };
+  }
+  if (row.approval_email_claimed_at) return { detail: "Sending", failed: false };
+  if (row.approval_email_error) return { detail: `Failed: ${row.approval_email_error}`, failed: true };
+  return { detail: "Not sent", failed: false };
+}
+
+function emailCell(row, csrf, filter, emailOn) {
+  const status = emailStatus(row);
+  const resend = emailOn && status.failed
+    ? `<form method="post" action="/admin/requests/${escapeHtml(row.id)}/resend">
+        <input type="hidden" name="csrf" value="${escapeHtml(csrf)}" />
+        <input type="hidden" name="return_status" value="${escapeHtml(filter === "all" ? "" : filter)}" />
+        <button type="submit">Resend email</button>
+      </form>`
+    : "";
+  return `${escapeHtml(status.detail)}${resend}`;
 }
 
 function actionLabel(status) {

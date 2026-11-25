@@ -69,7 +69,7 @@ The local API is `http://127.0.0.1:8787/api/demo-requests`. Point a local copy o
    npx wrangler d1 migrations apply sphere-demo-requests --remote
    ```
 
-   The schema is `migrations/0001_init.sql`.
+   That applies `migrations/0001_init.sql` and `migrations/0002_approval_email.sql`.
 
 5. Set secrets. Wrangler prompts for the value so it is not stored in the shell history as an argument if you paste it at the prompt:
 
@@ -101,13 +101,34 @@ Optional rate-limit vars, if the defaults (8 demo posts per IP per hour, 8 admin
 - `ADMIN_LOGIN_RATE_LIMIT`
 - `ADMIN_LOGIN_WINDOW_MS`
 
+## Approval email
+
+When an admin marks a request approved, the Worker can email that person the demo video link. `APPROVAL_EMAIL_ENABLED` is `false` in `wrangler.toml`. Leave it false until `https://video.spheresce.com` resolves and spheresce.com is onboarded to Email Sending. The queue works with the flag off.
+
+The message is sent with the `SEND_EMAIL` binding (`[[send_email]]` / `name = "SEND_EMAIL"`). There is no `destination_address` and no `allowed_destination_addresses`, so a requester at any address can receive it. Sending to arbitrary recipients requires the Workers Paid plan. The Workers Free plan can send only to verified destination addresses.
+
+`EMAIL_FROM` is `SPHERE team <no-reply@spheresce.com>`. `VIDEO_URL` is `https://video.spheresce.com`. The message greets the person by name, includes that video link, and signs off as the SPHERE team. It does not set a response address.
+
+Onboard spheresce.com before turning the flag on:
+
+1. The zone must use Cloudflare DNS. In the dashboard, open Compute > Email Service > Email Sending and choose Onboard Domain for spheresce.com.
+2. Apply the `cf-bounce` records Cloudflare shows. They are:
+   - MX records on `cf-bounce.spheresce.com` so bounces route to Cloudflare.
+   - TXT on `cf-bounce.spheresce.com`: `v=spf1 include:_spf.mx.cloudflare.net ~all`
+   - TXT on `cf-bounce._domainkey.spheresce.com` for the DKIM key Cloudflare generates.
+3. Add DMARC. If the zone has no DMARC record, onboarding adds `_dmarc.spheresce.com`. Cloudflare’s default when none exists is `v=DMARC1; p=reject`. If anything else already sends as spheresce.com, start with `p=none`, confirm the new mail authenticates, then tighten the policy. Use the exact records from the dashboard.
+
+Approving a request claims the row (`approval_email_claimed_at` is set only when `approval_email_sent_at` and `approval_email_claimed_at` are both empty), sends once, then sets `approval_email_sent_at`. A failed send stores `approval_email_error` and clears the claim. The admin queue can resend that failed message. Approving the same request again does not send a second message after a successful send. Rejected and pending requests are not emailed.
+
+Admin notification mail below stays off. Do not set `NOTIFY_TO` for this feature.
+
 ## Email
 
-Leave email off. New requests still appear in D1 and on `/admin`.
+Leave admin notification email off. New requests still appear in D1 and on `/admin`.
 
 `NOTIFY_EMAIL_ENABLED` must be the string `true` or the Worker will not send mail. The recipient is the `NOTIFY_TO` secret, never a value in the repo, and never the work email on the request. If `NOTIFY_TO` is the same address as the requester, the send is skipped.
 
-Nothing below adds DNS on spheresce.com.
+The admin-notification options below do not add DNS on spheresce.com. Approval mail, above, does.
 
 ### 1. Keep using the admin queue
 
@@ -117,9 +138,9 @@ No mailbox and no DNS. Review `/admin` and reply yourself from your own mail if 
 
 Use this only when some other domain is already on Cloudflare Email Routing (MX already in place on that domain).
 
-- Uncomment the `send_email` binding in `wrangler.toml`.
+- The `send_email` binding is already present for approval mail. Do not add a destination allowlist to it.
 - Set var `EMAIL_PROVIDER` to `cloudflare_email`.
-- Set var `EMAIL_FROM` to a sender on that already-routed zone.
+- `EMAIL_FROM` is already the SPHERE sender. Point admin alerts at a different verified sender only if you turn this path on.
 - Set secret `NOTIFY_TO` to the inbox that should receive the alert. Email Routing may require that destination to be verified.
 - Set var `NOTIFY_EMAIL_ENABLED` to `true` and redeploy.
 
@@ -137,13 +158,15 @@ Resend is wired up. The free tier is enough for a low volume of admin alerts.
 
 Other providers (for example Brevo or Postmark) are the same shape: an API key plus a sender that is already verified. Only Resend is implemented. Add another provider in `src/email.js` if you need one, and keep the flag off until it is configured.
 
-### What would require spheresce.com DNS
+### What not to add for admin alerts
 
-Do not use these for this Worker:
+Do not turn on admin alerts by adding these:
 
-- Cloudflare Email Routing, MX, SPF, or DKIM on spheresce.com
-- MailChannels or any other setup that publishes new mail records on spheresce.com
-- A custom domain or route that points spheresce.com at this Worker
+- Cloudflare Email Routing on spheresce.com
+- MailChannels records on spheresce.com
+- A Worker route or custom domain that points spheresce.com at this Worker
+
+Approval mail uses Email Sending on spheresce.com, which is the `cf-bounce` records and DMARC described above. That is separate from admin alerts.
 
 ## Files
 
@@ -152,8 +175,9 @@ Do not use these for this Worker:
 | `src/index.js` | Public `POST /api/demo-requests` |
 | `../shared/demo-request-validate.js` | Shared validation. The marketing page imports this file. Do not put secrets or an endpoint in it. |
 | `src/admin.js` | `/admin` queue |
-| `src/email.js` | Notification flag, default off |
+| `src/email.js` | Admin alerts (off) and approval mail (off until the video host resolves) |
 | `migrations/0001_init.sql` | D1 schema |
+| `migrations/0002_approval_email.sql` | Approval email columns |
 | `wrangler.toml` | Bindings and placeholders |
 
 ## Request body
