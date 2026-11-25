@@ -421,18 +421,35 @@ function queueDocument(csrf, filter, counts, rows, emailOn) {
   );
 }
 
+export function requestDetailItems(row) {
+  const record = row || {};
+  const items = [["Job title", record.job_title]];
+  appendDetail(items, "Country or region", record.country);
+  appendDetail(items, "Organization type", record.organization_type);
+  appendDetail(items, "Interested in", record.interest);
+  appendDetail(items, "Heard about SPHERE", record.heard_about);
+  if (record.consent_to_contact != null && record.consent_to_contact !== "") {
+    items.push(["Consent to be contacted", Number(record.consent_to_contact) ? "Yes" : "No"]);
+  }
+  items.push(
+    ["Request type", record.request_type],
+    ["Updated", formatWhen(record.updated_at)],
+    ["Approval email", `${emailStatus(record).detail}${expiryLabel(record)}`]
+  );
+  return items;
+}
+
+function appendDetail(items, label, value) {
+  if (value == null) return;
+  const text = String(value).trim();
+  if (!text) return;
+  items.push([label, text]);
+}
+
 function renderRow(row, csrf, filter, emailOn) {
-  const details = [
-    ["Job title", row.job_title],
-    ["Country or region", row.country],
-    ["Organization type", row.organization_type],
-    ["Interested in", row.interest],
-    ["Heard about SPHERE", row.heard_about],
-    ["Consent to be contacted", Number(row.consent_to_contact) ? "Yes" : "No"],
-    ["Request type", row.request_type],
-    ["Updated", formatWhen(row.updated_at)],
-    ["Approval email", `${emailStatus(row).detail}${expiryLabel(row)}`],
-  ].map(([label, value]) => `<div><dt>${escapeHtml(label)}</dt><dd>${escapeHtml(value || "—")}</dd></div>`).join("");
+  const details = requestDetailItems(row)
+    .map(([label, value]) => `<div><dt>${escapeHtml(label)}</dt><dd>${escapeHtml(value || "—")}</dd></div>`)
+    .join("");
 
   const actions = STATUSES.map((status) => {
     if (status === row.status) return "";
