@@ -17,7 +17,7 @@ export async function handleVideo(request, env) {
     const access = await authorizeVideo(env, token);
     if (!access.ok) return invalidPage(access.reason === "expired" || access.reason === "revoked" ? 410 : 404);
     if (captions) return await serveCaptions(request, env);
-    if (media) return await serveVideo(request, env);
+    if (media) return await serveVideo(request, env, token);
     return playerPage(token);
   } catch (err) {
     console.error("video request failed", err && err.message);
@@ -65,10 +65,14 @@ function playerPage(token) {
 <body>
   <main>
     <h1>SPHERE Executive Overview</h1>
-    <video controls preload="metadata">
+    <video controls controlsList="nodownload noplaybackrate noremoteplayback" disablePictureInPicture preload="metadata" oncontextmenu="return false">
       <source src="/v/${safeToken}/video" type="video/mp4" />
       <track kind="captions" src="/v/${safeToken}/captions.vtt" srclang="en" label="English" default />
     </video>
+    <script>
+      var player = document.querySelector("video");
+      if (player) player.addEventListener("contextmenu", function (event) { event.preventDefault(); });
+    </script>
   </main>
 </body>
 </html>`;
@@ -86,7 +90,24 @@ async function serveCaptions(request, env) {
   });
 }
 
-async function serveVideo(request, env) {
+async function serveVideo(request, env, token) {
+  if (request.headers.get("Sec-Fetch-Dest") === "document") {
+    let locationToken = token;
+    try {
+      locationToken = decodeURIComponent(token);
+    } catch {
+      locationToken = token;
+    }
+    return new Response(null, {
+      status: 302,
+      headers: {
+        Location: `/v/${encodeURIComponent(locationToken)}`,
+        "Cache-Control": "private, no-store",
+        "Referrer-Policy": "no-referrer",
+        "X-Content-Type-Options": "nosniff",
+      },
+    });
+  }
   const head = await env.VIDEO_BUCKET.head(VIDEO_KEY);
   if (!head) return unavailable(request);
   const size = Number(head.size);
@@ -94,7 +115,7 @@ async function serveVideo(request, env) {
   if (!range.ok) {
     return new Response(request.method === "HEAD" ? null : "Range not satisfiable", {
       status: 416,
-      headers: mediaHeaders("text/plain; charset=utf-8", undefined, `bytes */${size}`),
+      headers: mediaHeaders("text/plain; charset=utf-8", undefined, `bytes */${size}`, "inline"),
     });
   }
   const object = await env.VIDEO_BUCKET.get(
@@ -103,6 +124,7 @@ async function serveVideo(request, env) {
   );
   if (!object) return unavailable(request);
   const headers = mediaHeaders("video/mp4");
+  headers["Content-Disposition"] = "inline";
   if (range.full) {
     headers["Content-Length"] = String(size);
     return new Response(request.method === "HEAD" ? null : object.body, { status: 200, headers });
@@ -168,7 +190,7 @@ function pageHeaders(contentType) {
   };
 }
 
-function mediaHeaders(contentType, length, contentRange) {
+function mediaHeaders(contentType, length, contentRange, disposition) {
   const headers = {
     "Content-Type": contentType,
     "Accept-Ranges": "bytes",
@@ -177,6 +199,7 @@ function mediaHeaders(contentType, length, contentRange) {
     "X-Content-Type-Options": "nosniff",
     "X-Robots-Tag": "noindex",
   };
+  if (disposition) headers["Content-Disposition"] = disposition;
   if (length !== undefined) headers["Content-Length"] = String(length);
   if (contentRange) headers["Content-Range"] = contentRange;
   return headers;

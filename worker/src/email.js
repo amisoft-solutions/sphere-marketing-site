@@ -114,7 +114,7 @@ export function parseFromAddress(value) {
 
 export function videoLinkTtlDays(env) {
   const parsed = Number(env && env.VIDEO_LINK_TTL_DAYS);
-  if (!Number.isFinite(parsed) || parsed < 1) return 14;
+  if (!Number.isFinite(parsed) || parsed < 1) return 7;
   return Math.floor(parsed);
 }
 
@@ -138,7 +138,7 @@ export async function createVideoLink(env, requestId, now = Date.now(), notBefor
 export function renderApprovalEmail(row, link, ttlDays) {
   const name = String(row.full_name || row.fullName || "").trim();
   const url = String(link || "").trim();
-  const days = Number(ttlDays) || 14;
+  const days = Number(ttlDays) || 7;
   const text = [
     `Hello ${name},`,
     "",
