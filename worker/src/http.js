@@ -111,7 +111,7 @@ export function cookieValue(request, name) {
   return "";
 }
 
-export function sessionCookie(token, { secure, maxAge }) {
+export function sessionCookie(token, { secure, maxAge, domain }) {
   const parts = [
     `sphere_admin=${token}`,
     "HttpOnly",
@@ -119,6 +119,7 @@ export function sessionCookie(token, { secure, maxAge }) {
     "Path=/",
     `Max-Age=${maxAge}`,
   ];
+  if (domain) parts.push(`Domain=${domain}`);
   if (secure) parts.push("Secure");
   return parts.join("; ");
 }

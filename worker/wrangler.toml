@@ -1,5 +1,6 @@
-# SPHERE demo-request Worker. Stays on a workers.dev hostname.
-# The API stays on workers.dev. video.spheresce.com is a Worker custom domain for expiring links only.
+# SPHERE demo-request Worker. The public API stays on a workers.dev hostname.
+# video.spheresce.com is a Worker custom domain for expiring links only.
+# admin.spheresce.com is a Worker custom domain for the admin queue. workers.dev /admin stays as a fallback.
 # Approval mail stays off until the video host resolves and Email Sending is onboarded.
 #
 # Replace <d1-database-id> after `npx wrangler d1 create sphere-demo-requests`.
@@ -50,6 +51,10 @@ allowed_sender_addresses = ["no-reply@spheresce.com"]
 
 [[routes]]
 pattern = "video.spheresce.com"
+custom_domain = true
+
+[[routes]]
+pattern = "admin.spheresce.com"
 custom_domain = true
 
 [[r2_buckets]]

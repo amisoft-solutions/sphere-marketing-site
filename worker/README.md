@@ -1,6 +1,6 @@
 # SPHERE demo requests
 
-Cloudflare Worker and D1 database for the marketing-site demo form. The Worker stays on a `workers.dev` hostname. Do not add a route, custom domain, or DNS record for spheresce.com, and do not edit the `CNAME` file. The live Pages source is unchanged by this repo until someone switches it in the repository settings. See the site README for that one-time step.
+Cloudflare Worker and D1 database for the marketing-site demo form. The public API stays on a `workers.dev` hostname. Do not add a route, custom domain, or DNS record for the apex spheresce.com, and do not edit the `CNAME` file. The live Pages source is unchanged by this repo until someone switches it in the repository settings. See the site README for that one-time step.
 
 The queue works with email turned off. `NOTIFY_EMAIL_ENABLED` defaults to `false`.
 
@@ -86,15 +86,29 @@ The local API is `http://127.0.0.1:8787/api/demo-requests`. Point a local copy o
    npx wrangler deploy
    ```
 
-   Wrangler prints a `workers.dev` URL. There is no custom domain to configure.
+   Wrangler prints a `workers.dev` URL. The public API stays on that hostname. A host route in `wrangler.toml` is attached only when someone deploys.
 
 7. The deployed API is `https://sphere-demo-requests.aged-bonus-5453.workers.dev/api/demo-requests`. `config.js` is already set to that URL. It is the only place the page reads the endpoint. Do not put an inbox address in any file under the site root.
 
-8. Open the Worker’s `/admin` path and sign in with `ADMIN_PASSWORD`.
+8. Sign in at `https://admin.spheresce.com` after that hostname is attached, or on the Worker’s `/admin` path. The workers.dev `/admin` path remains a fallback and can be dropped later. The password is the `ADMIN_PASSWORD` secret.
+
+## Admin host
+
+`admin.spheresce.com` is served by this same Worker. Requests are chosen by hostname, the same way as `video.spheresce.com`. On that host, `GET /` is the sign-in page or the queue, so the address is `https://admin.spheresce.com`. `/admin` on that host still opens the same page. The admin host does not serve `/api` or the video player.
+
+The session cookie set on `admin.spheresce.com` includes `Domain=admin.spheresce.com`. It is not sent to `video.spheresce.com`, the marketing site, or workers.dev. Sign-in on workers.dev still sets a host-only cookie for that host. Sign-in stays rate-limited, and the queue forms still use the CSRF token.
+
+`wrangler.toml` has `custom_domain = true` for `admin.spheresce.com`, declared the same way as `video.spheresce.com`. Deploy is what attaches the hostname on the Cloudflare zone. This repo does not change DNS, secrets, or Cloudflare Access.
+
+A wildcard Cloudflare Access application on spheresce.com may already cover `admin.spheresce.com`, the same way it covers `video.spheresce.com`. Whether to change Access is a separate decision.
+
+The workers.dev `/admin` path stays as a fallback. It can be dropped later once `https://admin.spheresce.com` is the address everyone uses.
+
+Sign-in compares the submitted password with the `ADMIN_PASSWORD` secret. The Worker does not enforce a minimum length. Set or replace that secret with `npx wrangler secret put ADMIN_PASSWORD`. Do not put the value in the repo.
 
 ## Video host
 
-`video.spheresce.com` is served by this same Worker. Requests are chosen by hostname. The API and `/admin` stay on the workers.dev host. The video host does not serve `/admin` or `/api`.
+`video.spheresce.com` is served by this same Worker. Requests are chosen by hostname. The public API stays on the workers.dev host. `/admin` remains there as a fallback. The video host does not serve `/admin` or `/api`.
 
 Each approval email contains a personal link, `https://video.spheresce.com/v/<token>`. The token is an HMAC of the request id and an expiry. `VIDEO_LINK_TTL_DAYS` defaults to 7, and the email states that number of days. A link that was already issued keeps the expiry it was signed with. The current expiry is stored on the request. Rejecting the request, or sending a new link, stops the previous link. The player reads `SPHERE_Executive_Overview.mp4` from R2 and converts `SPHERE_Executive_Overview.srt` to WebVTT when the captions are requested. A `.vtt` object is not stored. The player does not offer a download control. The `/video` response uses `Content-Disposition: inline`. A browser that opens that URL directly is sent back to the player page. Playback and range requests are unchanged.
 
@@ -110,7 +124,7 @@ npx wrangler d1 migrations apply sphere-demo-requests --remote
 
 `wrangler.toml` has `custom_domain = true` for `video.spheresce.com`. Deploy attaches that hostname on the Cloudflare zone. Leave `APPROVAL_EMAIL_ENABLED` false until `https://video.spheresce.com` resolves and Email Sending is onboarded.
 
-`ALLOWED_ORIGINS` in `wrangler.toml` lists `https://www.spheresce.com` and `https://spheresce.com`. `ALLOW_LOCALHOST` is `false` there, so localhost is not accepted in production. Append another origin to that variable at deploy time if a preview host must call the API, and do not commit an organization hostname. `.dev.vars` is what turns localhost on for `wrangler dev`.
+`ALLOWED_ORIGINS` in `wrangler.toml` lists `https://www.spheresce.com` and `https://spheresce.com`. `https://admin.spheresce.com` is not an intake origin. The admin queue uses same-origin form posts, and the public request form does not call the API from that host. `ALLOW_LOCALHOST` is `false` there, so localhost is not accepted in production. Append another origin to that variable at deploy time if a preview host must call the API, and do not commit an organization hostname. `.dev.vars` is what turns localhost on for `wrangler dev`.
 
 Optional rate-limit vars, if the defaults (8 demo posts per IP per hour, 8 admin sign-in attempts per IP per 15 minutes) are too tight:
 
@@ -182,7 +196,7 @@ Do not turn on admin alerts by adding these:
 
 - Cloudflare Email Routing on spheresce.com
 - MailChannels records on spheresce.com
-- A Worker route or custom domain that points spheresce.com at this Worker
+- A Worker route or custom domain that points the apex spheresce.com at this Worker. `video.spheresce.com` and `admin.spheresce.com` are the host routes already in `wrangler.toml`.
 
 Approval mail uses Email Sending on spheresce.com, which is the `cf-bounce` records and DMARC described above. That is separate from admin alerts.
 
@@ -190,9 +204,9 @@ Approval mail uses Email Sending on spheresce.com, which is the `cf-bounce` reco
 
 | Path | Purpose |
 | --- | --- |
-| `src/index.js` | Public `POST /api/demo-requests` |
+| `src/index.js` | Public `POST /api/demo-requests`, plus hostname routing for the video and admin hosts |
 | `../shared/demo-request-validate.js` | Shared validation. The marketing page imports this file. Do not put secrets or an endpoint in it. |
-| `src/admin.js` | `/admin` queue |
+| `src/admin.js` | Admin queue, including `admin.spheresce.com` |
 | `src/email.js` | Admin alerts (off) and approval mail (off until the video host resolves) |
 | `migrations/0001_init.sql` | D1 schema |
 | `migrations/0002_approval_email.sql` | Approval email columns |
