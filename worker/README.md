@@ -96,7 +96,7 @@ The local API is `http://127.0.0.1:8787/api/demo-requests`. Point a local copy o
 
 `video.spheresce.com` is served by this same Worker. Requests are chosen by hostname. The API and `/admin` stay on the workers.dev host. The video host does not serve `/admin` or `/api`.
 
-Each approval email contains a personal link, `https://video.spheresce.com/v/<token>`. The token is an HMAC of the request id and an expiry. `VIDEO_LINK_TTL_DAYS` defaults to 14. The current expiry is stored on the request. Rejecting the request, or sending a new link, stops the previous link. The player reads `SPHERE_Executive_Overview.mp4` from R2 and converts `SPHERE_Executive_Overview.srt` to WebVTT when the captions are requested. A `.vtt` object is not stored.
+Each approval email contains a personal link, `https://video.spheresce.com/v/<token>`. The token is an HMAC of the request id and an expiry. `VIDEO_LINK_TTL_DAYS` defaults to 7, and the email states that number of days. A link that was already issued keeps the expiry it was signed with. The current expiry is stored on the request. Rejecting the request, or sending a new link, stops the previous link. The player reads `SPHERE_Executive_Overview.mp4` from R2 and converts `SPHERE_Executive_Overview.srt` to WebVTT when the captions are requested. A `.vtt` object is not stored. The player does not offer a download control. The `/video` response uses `Content-Disposition: inline`. A browser that opens that URL directly is sent back to the player page. Playback and range requests are unchanged.
 
 Before `npx wrangler deploy` for this host:
 

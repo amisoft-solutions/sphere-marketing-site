@@ -40,7 +40,7 @@ EMAIL_PROVIDER = "off"
 APPROVAL_EMAIL_ENABLED = "false"
 EMAIL_FROM = "Logic Pursuits Representative <no-reply@spheresce.com>"
 VIDEO_URL = "https://video.spheresce.com"
-VIDEO_LINK_TTL_DAYS = "14"
+VIDEO_LINK_TTL_DAYS = "7"
 
 # Recipients stay unrestricted. The sender cannot drift from this address.
 # Arbitrary recipients require Workers Paid.

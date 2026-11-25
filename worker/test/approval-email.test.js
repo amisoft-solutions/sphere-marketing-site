@@ -1,7 +1,8 @@
 import assert from "node:assert/strict";
+import { readFileSync } from "node:fs";
 import test from "node:test";
 import { deliverApprovalEmail, expireStaleApprovalClaims } from "../src/admin.js";
-import { renderApprovalEmail, sendApprovalEmail } from "../src/email.js";
+import { renderApprovalEmail, sendApprovalEmail, videoLinkTtlDays } from "../src/email.js";
 import worker from "../src/index.js";
 import { countRequests, createDb, makeEnv, payload } from "./helpers.js";
 
@@ -90,7 +91,11 @@ test("approving sends the video link once, and approving again does not", async 
   assert.equal(env.sends[0].replyTo, undefined);
   assert.match(env.sends[0].text, /Hello Jordan Lee,/);
   assert.match(env.sends[0].text, /https:\/\/video\.spheresce\.com\/v\/[A-Za-z0-9_-]+\.[A-Za-z0-9_-]+/);
-  assert.match(env.sends[0].text, /This link expires in 14 days/);
+  assert.match(env.sends[0].text, /This link expires in 7 days/);
+  assert.match(env.sends[0].html, /This link expires in 7 days/);
+  const sentExpiry = Date.parse(db.prepare("SELECT video_link_expires_at FROM demo_requests WHERE id = ?").get(id).video_link_expires_at);
+  const remainingDays = (sentExpiry - Date.now()) / 86400000;
+  assert.ok(remainingDays > 6.9 && remainingDays < 7.1);
   assert.match(env.sends[0].text, /A Logic Pursuits Representative approved your demo request/);
   assert.match(env.sends[0].text, /\nLogic Pursuits Representative$/);
   assert.equal(env.sends[0].text.includes("The SPHERE team approved"), false);
@@ -219,6 +224,17 @@ test("rejected and pending requests are not emailed", async () => {
   assert.equal((await deliverApprovalEmail(env, id)).reason, "not-claimed");
   assert.equal(env.sends.length, 0);
   assert.equal(db.prepare("SELECT approval_email_sent_at FROM demo_requests WHERE id = ?").get(id).approval_email_sent_at, null);
+});
+
+test("a missing video link lifetime defaults to 7 days", () => {
+  assert.equal(videoLinkTtlDays({}), 7);
+  assert.equal(videoLinkTtlDays({ VIDEO_LINK_TTL_DAYS: "0" }), 7);
+  assert.equal(videoLinkTtlDays({ VIDEO_LINK_TTL_DAYS: "nope" }), 7);
+  assert.equal(videoLinkTtlDays({ VIDEO_LINK_TTL_DAYS: "7" }), 7);
+  const rendered = renderApprovalEmail({ full_name: "Jordan Lee" }, `${VIDEO}/v/example.token`);
+  assert.match(rendered.text, /This link expires in 7 days\./);
+  assert.match(rendered.html, /This link expires in 7 days\./);
+  assert.match(readFileSync(new URL("../wrangler.toml", import.meta.url), "utf8"), /VIDEO_LINK_TTL_DAYS = "7"/);
 });
 
 test("approval HTML escapes the name and does not use a response address", async () => {

@@ -77,6 +77,17 @@ test("tokens verify, expire, and reject tampering", async () => {
   assert.equal(wrongSecret.ok, false);
 });
 
+test("a link that was already signed keeps that expiry", async () => {
+  const db = createDb();
+  const expiryEpoch = Math.floor(Date.now() / 1000) + 14 * 86400;
+  const { token } = await approvedToken(db, { expiryEpoch });
+  const env = makeEnv(db, { VIDEO_LINK_SECRET: SECRET, VIDEO_BUCKET: bucket() });
+  const page = await worker.fetch(new Request(`https://video.spheresce.com/v/${token}`), env);
+  assert.equal(page.status, 200);
+  const checked = await verifyVideoToken(SECRET, token);
+  assert.equal(checked.expiry, expiryEpoch);
+});
+
 test("a link is revoked when the request is not approved", async () => {
   const db = createDb();
   const { token } = await approvedToken(db, { status: "rejected" });
@@ -101,6 +112,8 @@ test("video range requests return 206 and captions are converted", async () => {
   assert.equal(response.headers.get("Content-Range"), "bytes 0-4/16");
   assert.equal(response.headers.get("Content-Length"), "5");
   assert.equal(response.headers.get("Cache-Control"), "private");
+  assert.equal(response.headers.get("Content-Disposition"), "inline");
+  assert.equal(String(response.headers.get("Content-Disposition")).includes("attachment"), false);
   assert.equal(new TextDecoder().decode(await response.arrayBuffer()), "01234");
 
   const open = await worker.fetch(
@@ -109,6 +122,7 @@ test("video range requests return 206 and captions are converted", async () => {
   );
   assert.equal(open.status, 416);
   assert.match(open.headers.get("Content-Range"), /bytes \*\/16/);
+  assert.equal(open.headers.get("Content-Disposition"), "inline");
 
   const captions = await worker.fetch(new Request(`https://video.spheresce.com/v/${token}/captions.vtt`), env);
   assert.equal(captions.status, 200);
@@ -121,10 +135,39 @@ test("video range requests return 206 and captions are converted", async () => {
   assert.equal(page.status, 200);
   const html = await page.text();
   assert.match(html, /SPHERE Executive Overview/);
-  assert.match(html, /<video/);
+  assert.match(html, /<video[^>]*controlsList="nodownload noplaybackrate noremoteplayback"/);
+  assert.match(html, /disablePictureInPicture/);
+  assert.match(html, /oncontextmenu="return false"/);
+  assert.match(html, /addEventListener\("contextmenu"/);
+  assert.match(html, /preventDefault/);
   assert.match(html, /captions\.vtt/);
   assert.equal(page.headers.get("X-Robots-Tag"), "noindex");
   assert.equal(page.headers.get("Referrer-Policy"), "no-referrer");
+});
+
+test("a direct visit to the video file returns to the player, and playback fetches still stream", async () => {
+  const db = createDb();
+  const { token } = await approvedToken(db);
+  const env = makeEnv(db, { VIDEO_LINK_SECRET: SECRET, VIDEO_BUCKET: bucket() });
+  const direct = await worker.fetch(
+    new Request(`https://video.spheresce.com/v/${token}/video`, { headers: { "Sec-Fetch-Dest": "document" } }),
+    env
+  );
+  assert.equal(direct.status, 302);
+  assert.equal(direct.headers.get("Location"), `/v/${token}`);
+  assert.equal(await direct.text(), "");
+
+  for (const dest of ["video", "empty"]) {
+    const playback = await worker.fetch(
+      new Request(`https://video.spheresce.com/v/${token}/video`, {
+        headers: { "Sec-Fetch-Dest": dest, Range: "bytes=0-4" },
+      }),
+      env
+    );
+    assert.equal(playback.status, 206, dest);
+    assert.equal(playback.headers.get("Content-Disposition"), "inline");
+    assert.equal(new TextDecoder().decode(await playback.arrayBuffer()), "01234");
+  }
 });
 
 test("the video host does not expose admin or the API", async () => {
