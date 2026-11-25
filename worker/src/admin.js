@@ -35,6 +35,10 @@ export async function handleAdmin(request, env) {
   if (sendMatch && request.method === "POST") {
     return sendApproval(request, env, sendMatch[1]);
   }
+  const newLinkMatch = url.pathname.match(/^\/admin\/requests\/([0-9a-f-]+)\/new-link$/i);
+  if (newLinkMatch && request.method === "POST") {
+    return sendNewLink(request, env, newLinkMatch[1]);
+  }
   const statusMatch = url.pathname.match(/^\/admin\/requests\/([0-9a-f-]+)$/i);
   if (statusMatch && request.method === "POST") {
     return updateStatus(request, env, statusMatch[1]);
@@ -184,6 +188,29 @@ export async function expireStaleApprovalClaims(env, now = Date.now()) {
   return cutoff;
 }
 
+async function sendNewLink(request, env, id) {
+  const session = await loadSession(request, env);
+  if (!session) return html(loginDocument("Sign in to update a request."), 401);
+  if (!UUID_RE.test(id)) return text("Not found", 404);
+  const body = await readBodyObject(request);
+  if (!timingSafeEqual(String(body.csrf || ""), session.csrf_token)) {
+    return html(queueMessage("The page expired. Reload it and try again."), 403);
+  }
+  if (!approvalEmailEnabled(env)) return html(queueMessage("Approval email is off."), 400);
+  await expireStaleApprovalClaims(env);
+  const row = await env.DB.prepare("SELECT status FROM demo_requests WHERE id = ?").bind(id).first();
+  if (!row) return text("Not found", 404);
+  if (row.status !== "approved") {
+    return html(queueMessage("Only an approved request can receive a new video link."), 400);
+  }
+  await deliverApprovalEmail(env, id, { reissue: true });
+  const back = STATUSES.includes(String(body.return_status || "")) ? `?status=${body.return_status}` : "";
+  return new Response(null, {
+    status: 303,
+    headers: baseHeaders({ Location: `/admin${back}` }),
+  });
+}
+
 async function sendApproval(request, env, id) {
   const session = await loadSession(request, env);
   if (!session) return html(loginDocument("Sign in to update a request."), 401);
@@ -211,30 +238,36 @@ async function sendApproval(request, env, id) {
   });
 }
 
-export async function deliverApprovalEmail(env, id) {
+export async function deliverApprovalEmail(env, id, options = {}) {
   if (!approvalEmailEnabled(env)) return { sent: false, reason: "disabled" };
   const claimAt = new Date().toISOString();
   const staleBefore = new Date(Date.now() - APPROVAL_CLAIM_TTL_MS).toISOString();
-  const claim = await env.DB.prepare(
-    `UPDATE demo_requests
-     SET approval_email_claimed_at = ?, approval_email_error = NULL
-     WHERE id = ?
-       AND status = 'approved'
-       AND approval_email_sent_at IS NULL
-       AND (approval_email_claimed_at IS NULL OR approval_email_claimed_at <= ?)`
-  ).bind(claimAt, id, staleBefore).run();
+  const claimSql = options.reissue
+    ? `UPDATE demo_requests
+       SET approval_email_claimed_at = ?, approval_email_error = NULL
+       WHERE id = ?
+         AND status = 'approved'
+         AND (approval_email_claimed_at IS NULL OR approval_email_claimed_at <= ?)`
+    : `UPDATE demo_requests
+       SET approval_email_claimed_at = ?, approval_email_error = NULL
+       WHERE id = ?
+         AND status = 'approved'
+         AND approval_email_sent_at IS NULL
+         AND (approval_email_claimed_at IS NULL OR approval_email_claimed_at <= ?)`;
+  const claim = await env.DB.prepare(claimSql).bind(claimAt, id, staleBefore).run();
   if (!claim.meta || claim.meta.changes < 1) return { sent: false, reason: "not-claimed" };
   const row = await env.DB.prepare(
-    "SELECT id, full_name, work_email, status FROM demo_requests WHERE id = ?"
+    "SELECT id, full_name, work_email, status, video_link_expires_at FROM demo_requests WHERE id = ?"
   ).bind(id).first();
   try {
     const sent = await sendApprovalEmail(env, row);
     if (!sent || !sent.sent) throw new Error("Approval email was not sent.");
     await env.DB.prepare(
       `UPDATE demo_requests
-       SET approval_email_sent_at = ?, approval_email_error = NULL, approval_email_claimed_at = NULL
+       SET approval_email_sent_at = ?, approval_email_error = NULL, approval_email_claimed_at = NULL,
+           video_link_expires_at = ?
        WHERE id = ? AND approval_email_claimed_at = ?`
-    ).bind(new Date().toISOString(), id, claimAt).run();
+    ).bind(new Date().toISOString(), sent.expiresAt, id, claimAt).run();
     return { sent: true };
   } catch (err) {
     const message = String((err && err.message) || "Email sending failed").slice(0, 500);
@@ -387,7 +420,7 @@ function renderRow(row, csrf, filter, emailOn) {
     ["Consent to be contacted", Number(row.consent_to_contact) ? "Yes" : "No"],
     ["Request type", row.request_type],
     ["Updated", formatWhen(row.updated_at)],
-    ["Approval email", emailStatus(row).detail],
+    ["Approval email", `${emailStatus(row).detail}${expiryLabel(row)}`],
   ].map(([label, value]) => `<div><dt>${escapeHtml(label)}</dt><dd>${escapeHtml(value || "—")}</dd></div>`).join("");
 
   const actions = STATUSES.map((status) => {
@@ -442,7 +475,19 @@ function emailCell(row, csrf, filter, emailOn) {
         <button type="submit">Send email</button>
       </form>`
     : "";
-  return `${escapeHtml(status.detail)}${send}${resend}`;
+  const renew = emailOn && row.status === "approved"
+    ? `<form method="post" action="/admin/requests/${escapeHtml(row.id)}/new-link">
+        <input type="hidden" name="csrf" value="${token}" />
+        <input type="hidden" name="return_status" value="${back}" />
+        <button type="submit">Send new link</button>
+      </form>`
+    : "";
+  return `${escapeHtml(status.detail + expiryLabel(row))}${send}${resend}${renew}`;
+}
+
+function expiryLabel(row) {
+  if (!row.video_link_expires_at) return "";
+  return ` Link expires ${formatWhen(row.video_link_expires_at)}.`;
 }
 
 function actionLabel(status) {

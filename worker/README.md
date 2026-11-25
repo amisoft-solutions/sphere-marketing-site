@@ -69,7 +69,7 @@ The local API is `http://127.0.0.1:8787/api/demo-requests`. Point a local copy o
    npx wrangler d1 migrations apply sphere-demo-requests --remote
    ```
 
-   That applies `migrations/0001_init.sql` and `migrations/0002_approval_email.sql`.
+   That applies `migrations/0001_init.sql`, `migrations/0002_approval_email.sql`, and `migrations/0003_video_link.sql`.
 
 5. Set secrets. Wrangler prompts for the value so it is not stored in the shell history as an argument if you paste it at the prompt:
 
@@ -91,6 +91,24 @@ The local API is `http://127.0.0.1:8787/api/demo-requests`. Point a local copy o
 7. The deployed API is `https://sphere-demo-requests.aged-bonus-5453.workers.dev/api/demo-requests`. `config.js` is already set to that URL. It is the only place the page reads the endpoint. Do not put an inbox address in any file under the site root.
 
 8. Open the Worker’s `/admin` path and sign in with `ADMIN_PASSWORD`.
+
+## Video host
+
+`video.spheresce.com` is served by this same Worker. Requests are chosen by hostname. The API and `/admin` stay on the workers.dev host. The video host does not serve `/admin` or `/api`.
+
+Each approval email contains a personal link, `https://video.spheresce.com/v/<token>`. The token is an HMAC of the request id and an expiry. `VIDEO_LINK_TTL_DAYS` defaults to 14. The current expiry is stored on the request. Rejecting the request, or sending a new link, stops the previous link. The player reads `SPHERE_Executive_Overview.mp4` from R2 and converts `SPHERE_Executive_Overview.srt` to WebVTT when the captions are requested. A `.vtt` object is not stored.
+
+Before `npx wrangler deploy` for this host:
+
+```bash
+npx wrangler r2 bucket create sphere-video
+npx wrangler r2 object put sphere-video/SPHERE_Executive_Overview.mp4 --file ./SPHERE_Executive_Overview.mp4 --content-type video/mp4
+npx wrangler r2 object put sphere-video/SPHERE_Executive_Overview.srt --file ./SPHERE_Executive_Overview.srt --content-type text/plain
+npx wrangler secret put VIDEO_LINK_SECRET
+npx wrangler d1 migrations apply sphere-demo-requests --remote
+```
+
+`wrangler.toml` has `custom_domain = true` for `video.spheresce.com`. Deploy attaches that hostname on the Cloudflare zone. Leave `APPROVAL_EMAIL_ENABLED` false until `https://video.spheresce.com` resolves and Email Sending is onboarded.
 
 `ALLOWED_ORIGINS` in `wrangler.toml` lists `https://www.spheresce.com` and `https://spheresce.com`. `ALLOW_LOCALHOST` is `false` there, so localhost is not accepted in production. Append another origin to that variable at deploy time if a preview host must call the API, and do not commit an organization hostname. `.dev.vars` is what turns localhost on for `wrangler dev`.
 
@@ -178,6 +196,8 @@ Approval mail uses Email Sending on spheresce.com, which is the `cf-bounce` reco
 | `src/email.js` | Admin alerts (off) and approval mail (off until the video host resolves) |
 | `migrations/0001_init.sql` | D1 schema |
 | `migrations/0002_approval_email.sql` | Approval email columns |
+| `migrations/0003_video_link.sql` | Current video-link expiry |
+| `src/video.js` | Player, video stream, and captions on the video host |
 | `wrangler.toml` | Bindings and placeholders |
 
 ## Request body

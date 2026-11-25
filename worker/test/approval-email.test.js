@@ -14,6 +14,7 @@ function mailEnv(db, overrides = {}) {
     APPROVAL_EMAIL_ENABLED: "true",
     EMAIL_FROM: FROM,
     VIDEO_URL: VIDEO,
+    VIDEO_LINK_SECRET: "test-video-secret",
     SEND_EMAIL: {
       send: async (message) => {
         sends.push(message);
@@ -88,7 +89,8 @@ test("approving sends the video link once, and approving again does not", async 
   assert.deepEqual(env.sends[0].from, { name: "SPHERE team", email: "no-reply@spheresce.com" });
   assert.equal(env.sends[0].replyTo, undefined);
   assert.match(env.sends[0].text, /Hello Jordan Lee,/);
-  assert.match(env.sends[0].text, /https:\/\/video\.spheresce\.com/);
+  assert.match(env.sends[0].text, /https:\/\/video\.spheresce\.com\/v\/[A-Za-z0-9_-]+\.[A-Za-z0-9_-]+/);
+  assert.match(env.sends[0].text, /This link expires in 14 days/);
   assert.match(env.sends[0].text, /the SPHERE team/);
   const row = db.prepare("SELECT approval_email_sent_at, approval_email_claimed_at, approval_email_error FROM demo_requests WHERE id = ?").get(id);
   assert.ok(row.approval_email_sent_at);
@@ -124,7 +126,10 @@ test("only one of two overlapping sends claims the row", async () => {
 
   const first = deliverApprovalEmail(env, id);
   const second = deliverApprovalEmail(env, id);
-  await new Promise((resolve) => setImmediate(resolve));
+  const deadline = Date.now() + 2000;
+  while (started < 1 && Date.now() < deadline) {
+    await new Promise((resolve) => setTimeout(resolve, 10));
+  }
   assert.equal(started, 1);
   release();
   const results = await Promise.all([first, second]);
@@ -214,7 +219,7 @@ test("rejected and pending requests are not emailed", async () => {
 
 test("approval HTML escapes the name and does not use a response address", async () => {
   const name = `Ann <script> & "quotes"`;
-  const rendered = renderApprovalEmail({ full_name: name }, VIDEO);
+  const rendered = renderApprovalEmail({ full_name: name }, `${VIDEO}/v/example.token`, 14);
   assert.match(rendered.html, /Ann &lt;script&gt; &amp; &quot;quotes&quot;/);
   assert.equal(rendered.html.includes("<script>"), false);
   assert.match(rendered.text, /Hello Ann <script> & "quotes",/);
@@ -339,4 +344,31 @@ test("a video URL other than the SPHERE host is not sent", async () => {
   assert.equal(row.approval_email_sent_at, null);
   assert.equal(row.approval_email_claimed_at, null);
   assert.match(row.approval_email_error, /not configured/);
+});
+
+test("Send new link reissues a link after a successful send", async () => {
+  const db = createDb();
+  const env = mailEnv(db);
+  await postDemo(env, payload({ fullName: "Jordan Lee" }), "203.0.113.94");
+  const { cookie, csrf } = await signIn(env, "203.0.113.95");
+  const id = db.prepare("SELECT id FROM demo_requests").get().id;
+  await postForm(env, `/admin/requests/${id}`, cookie, `csrf=${csrf}&status=approved&return_status=approved`);
+  const firstLink = env.sends[0].text.match(/https:\/\/video\.spheresce\.com\/v\/\S+/)[0];
+  const page = await worker.fetch(
+    new Request("https://worker.test/admin?status=approved", { headers: { Cookie: `sphere_admin=${cookie}` } }),
+    env
+  );
+  const html = await page.text();
+  assert.match(html, />Send new link</);
+  assert.match(html, /Link expires /);
+  const forged = await postForm(env, `/admin/requests/${id}/new-link`, cookie, "csrf=nope");
+  assert.equal(forged.status, 403);
+  assert.equal(env.sends.length, 1);
+  const renewed = await postForm(env, `/admin/requests/${id}/new-link`, cookie, `csrf=${csrf}&return_status=approved`);
+  assert.equal(renewed.status, 303);
+  assert.equal(env.sends.length, 2);
+  const secondLink = env.sends[1].text.match(/https:\/\/video\.spheresce\.com\/v\/\S+/)[0];
+  assert.notEqual(firstLink, secondLink);
+  const stored = db.prepare("SELECT video_link_expires_at FROM demo_requests WHERE id = ?").get(id);
+  assert.ok(stored.video_link_expires_at);
 });
