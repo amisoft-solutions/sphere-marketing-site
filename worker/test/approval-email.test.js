@@ -5,7 +5,7 @@ import { renderApprovalEmail, sendApprovalEmail } from "../src/email.js";
 import worker from "../src/index.js";
 import { countRequests, createDb, makeEnv, payload } from "./helpers.js";
 
-const FROM = "SPHERE team <no-reply@spheresce.com>";
+const FROM = "Logic Pursuits Representative <no-reply@spheresce.com>";
 const VIDEO = "https://video.spheresce.com";
 
 function mailEnv(db, overrides = {}) {
@@ -86,12 +86,12 @@ test("approving sends the video link once, and approving again does not", async 
   assert.equal(approved.status, 303);
   assert.equal(env.sends.length, 1);
   assert.equal(env.sends[0].to, "jordan.lee@northwindbio.example");
-  assert.deepEqual(env.sends[0].from, { name: "SPHERE team", email: "no-reply@spheresce.com" });
+  assert.deepEqual(env.sends[0].from, { name: "Logic Pursuits Representative", email: "no-reply@spheresce.com" });
   assert.equal(env.sends[0].replyTo, undefined);
   assert.match(env.sends[0].text, /Hello Jordan Lee,/);
   assert.match(env.sends[0].text, /https:\/\/video\.spheresce\.com\/v\/[A-Za-z0-9_-]+\.[A-Za-z0-9_-]+/);
   assert.match(env.sends[0].text, /This link expires in 14 days/);
-  assert.match(env.sends[0].text, /the SPHERE team/);
+  assert.match(env.sends[0].text, /Logic Pursuits Representative/);
   const row = db.prepare("SELECT approval_email_sent_at, approval_email_claimed_at, approval_email_error FROM demo_requests WHERE id = ?").get(id);
   assert.ok(row.approval_email_sent_at);
   assert.equal(row.approval_email_claimed_at, null);
@@ -223,7 +223,7 @@ test("approval HTML escapes the name and does not use a response address", async
   assert.match(rendered.html, /Ann &lt;script&gt; &amp; &quot;quotes&quot;/);
   assert.equal(rendered.html.includes("<script>"), false);
   assert.match(rendered.text, /Hello Ann <script> & "quotes",/);
-  assert.match(rendered.html, /the SPHERE team/);
+  assert.match(rendered.html, /Logic Pursuits Representative/);
 
   const db = createDb();
   const env = mailEnv(db);

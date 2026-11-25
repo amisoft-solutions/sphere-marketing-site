@@ -125,7 +125,7 @@ When an admin marks a request approved, the Worker can email that person the dem
 
 The message is sent with the `SEND_EMAIL` binding. Recipients are not restricted. `allowed_sender_addresses` is only `no-reply@spheresce.com`, so the from address cannot drift. Sending to arbitrary recipients requires the Workers Paid plan. The Workers Free plan can send only to verified destination addresses.
 
-`EMAIL_FROM` is `SPHERE team <no-reply@spheresce.com>`. `VIDEO_URL` is `https://video.spheresce.com`. The message greets the person by name, includes that video link, and signs off as the SPHERE team. It does not set a response address.
+`EMAIL_FROM` is `Logic Pursuits Representative <no-reply@spheresce.com>`. `VIDEO_URL` is `https://video.spheresce.com`. The message greets the person by name, includes that video link, and signs off as Logic Pursuits Representative. It does not set a response address.
 
 Onboard spheresce.com before turning the flag on:
 
@@ -158,7 +158,7 @@ Use this only when some other domain is already on Cloudflare Email Routing (MX 
 
 - The `send_email` binding is already present for approval mail. Do not add a destination allowlist to it.
 - Set var `EMAIL_PROVIDER` to `cloudflare_email`.
-- `EMAIL_FROM` is already the SPHERE sender. Point admin alerts at a different verified sender only if you turn this path on.
+- `EMAIL_FROM` is already Logic Pursuits Representative at no-reply@spheresce.com. Point admin alerts at a different verified sender only if you turn this path on.
 - Set secret `NOTIFY_TO` to the inbox that should receive the alert. Email Routing may require that destination to be verified.
 - Set var `NOTIFY_EMAIL_ENABLED` to `true` and redeploy.
 

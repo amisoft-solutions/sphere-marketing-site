@@ -147,7 +147,7 @@ export function renderApprovalEmail(row, link, ttlDays) {
     "",
     `This link expires in ${days} days.`,
     "",
-    "the SPHERE team",
+    "Logic Pursuits Representative",
   ].join("\n");
   const safeName = escapeHtml(name);
   const safeUrl = escapeHtml(url);
@@ -156,7 +156,7 @@ export function renderApprovalEmail(row, link, ttlDays) {
     "<p>The SPHERE team approved your demo request. You can watch the demo here:</p>",
     `<p><a href="${safeUrl}">${safeUrl}</a></p>`,
     `<p>This link expires in ${days} days.</p>`,
-    "<p>the SPHERE team</p>",
+    "<p>Logic Pursuits Representative</p>",
   ].join("");
   return { subject: "Your SPHERE demo", text, html };
 }
