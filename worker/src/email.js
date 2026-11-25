@@ -8,6 +8,7 @@
  */
 
 import { escapeHtml } from "./http.js";
+import { signVideoToken } from "./video-token.js";
 
 export function notificationsEnabled(env) {
   return String(env && env.NOTIFY_EMAIL_ENABLED != null ? env.NOTIFY_EMAIL_ENABLED : "false").toLowerCase() === "true";
@@ -111,24 +112,51 @@ export function parseFromAddress(value) {
   return { name, email };
 }
 
-export function renderApprovalEmail(row, videoUrl) {
+export function videoLinkTtlDays(env) {
+  const parsed = Number(env && env.VIDEO_LINK_TTL_DAYS);
+  if (!Number.isFinite(parsed) || parsed < 1) return 14;
+  return Math.floor(parsed);
+}
+
+export async function createVideoLink(env, requestId, now = Date.now(), notBeforeEpoch = 0) {
+  const base = typeof env.VIDEO_URL === "string" ? env.VIDEO_URL.trim() : "";
+  if (base !== REQUIRED_VIDEO_URL || !env.VIDEO_LINK_SECRET) {
+    throw new Error("Approval email is not configured.");
+  }
+  const days = videoLinkTtlDays(env);
+  let expiryEpoch = Math.floor(now / 1000) + days * 86400;
+  if (expiryEpoch <= notBeforeEpoch) expiryEpoch = notBeforeEpoch + 1;
+  const token = await signVideoToken(env.VIDEO_LINK_SECRET, requestId, expiryEpoch);
+  return {
+    link: `${base}/v/${token}`,
+    expiresAt: new Date(expiryEpoch * 1000).toISOString(),
+    expiryEpoch,
+    days,
+  };
+}
+
+export function renderApprovalEmail(row, link, ttlDays) {
   const name = String(row.full_name || row.fullName || "").trim();
-  const url = String(videoUrl || "").trim();
+  const url = String(link || "").trim();
+  const days = Number(ttlDays) || 14;
   const text = [
     `Hello ${name},`,
     "",
-    "The SPHERE team approved your demo request. You can watch the demo here:",
+    "A Logic Pursuits Representative approved your demo request. You can watch the demo here:",
     url,
     "",
-    "the SPHERE team",
+    `This link expires in ${days} days.`,
+    "",
+    "Logic Pursuits Representative",
   ].join("\n");
   const safeName = escapeHtml(name);
   const safeUrl = escapeHtml(url);
   const html = [
     `<p>Hello ${safeName},</p>`,
-    "<p>The SPHERE team approved your demo request. You can watch the demo here:</p>",
+    "<p>A Logic Pursuits Representative approved your demo request. You can watch the demo here:</p>",
     `<p><a href="${safeUrl}">${safeUrl}</a></p>`,
-    "<p>the SPHERE team</p>",
+    `<p>This link expires in ${days} days.</p>`,
+    "<p>Logic Pursuits Representative</p>",
   ].join("");
   return { subject: "Your SPHERE demo", text, html };
 }
@@ -137,14 +165,15 @@ export async function sendApprovalEmail(env, row) {
   if (!approvalEmailEnabled(env)) return { sent: false, reason: "disabled" };
   const to = String((row && (row.work_email || row.workEmail)) || "").trim();
   const fromRaw = typeof env.EMAIL_FROM === "string" ? env.EMAIL_FROM.trim() : "";
-  const videoUrl = typeof env.VIDEO_URL === "string" ? env.VIDEO_URL.trim() : "";
-  if (!to || !fromRaw || videoUrl !== REQUIRED_VIDEO_URL) {
-    throw new Error("Approval email is not configured.");
-  }
+  if (!to || !fromRaw) throw new Error("Approval email is not configured.");
   if (!env.SEND_EMAIL || typeof env.SEND_EMAIL.send !== "function") {
     throw new Error("Email sending is not configured.");
   }
-  const message = renderApprovalEmail(row, videoUrl);
+  const previous = row && row.video_link_expires_at ? Math.floor(Date.parse(row.video_link_expires_at) / 1000) : 0;
+  const natural = Math.floor(Date.now() / 1000) + videoLinkTtlDays(env) * 86400;
+  const notBefore = row && row.approval_email_sent_at ? Math.max(previous, natural) : previous;
+  const videoLink = await createVideoLink(env, row.id || row.requestId, Date.now(), notBefore);
+  const message = renderApprovalEmail(row, videoLink.link, videoLink.days);
   await env.SEND_EMAIL.send({
     to,
     from: parseFromAddress(fromRaw),
@@ -152,5 +181,5 @@ export async function sendApprovalEmail(env, row) {
     text: message.text,
     html: message.html,
   });
-  return { sent: true };
+  return { sent: true, expiresAt: videoLink.expiresAt, link: videoLink.link };
 }

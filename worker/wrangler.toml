@@ -1,6 +1,6 @@
 # SPHERE demo-request Worker. Stays on a workers.dev hostname.
-# Do not add a Worker route or custom domain for spheresce.com.
-# Approval mail uses Email Sending DNS, documented in README. The flag stays off until that is done.
+# The API stays on workers.dev. video.spheresce.com is a Worker custom domain for expiring links only.
+# Approval mail stays off until the video host resolves and Email Sending is onboarded.
 #
 # Replace <d1-database-id> after `npx wrangler d1 create sphere-demo-requests`.
 # Do not put account ids, API tokens, or the admin password in this file.
@@ -9,6 +9,7 @@
 #   RATE_LIMIT_SALT
 #   NOTIFY_TO          (only if email is later turned on)
 #   RESEND_API_KEY     (only if EMAIL_PROVIDER is resend)
+#   VIDEO_LINK_SECRET  (signs per-person video links)
 
 name = "sphere-demo-requests"
 main = "src/index.js"
@@ -37,11 +38,20 @@ EMAIL_PROVIDER = "off"
 # Approval mail to the requester. Leave false until https://video.spheresce.com resolves
 # and spheresce.com is onboarded to Email Sending. The message has no response address.
 APPROVAL_EMAIL_ENABLED = "false"
-EMAIL_FROM = "SPHERE team <no-reply@spheresce.com>"
+EMAIL_FROM = "Logic Pursuits Representative <no-reply@spheresce.com>"
 VIDEO_URL = "https://video.spheresce.com"
+VIDEO_LINK_TTL_DAYS = "14"
 
 # Recipients stay unrestricted. The sender cannot drift from this address.
 # Arbitrary recipients require Workers Paid.
 [[send_email]]
 name = "SEND_EMAIL"
 allowed_sender_addresses = ["no-reply@spheresce.com"]
+
+[[routes]]
+pattern = "video.spheresce.com"
+custom_domain = true
+
+[[r2_buckets]]
+binding = "VIDEO_BUCKET"
+bucket_name = "sphere-video-overview"

@@ -4,6 +4,7 @@ import { maybeNotify } from "./email.js";
 import { baseHeaders, clientIp, json, readJson } from "./http.js";
 import { consumeRateLimit, demoLimit, demoWindowMs, rateBucket } from "./rate-limit.js";
 import { validateDemoRequest } from "../../shared/demo-request-validate.js";
+import { handleVideo } from "./video.js";
 
 const RETRY = "Something went wrong while sending your request. Please try again.";
 
@@ -15,6 +16,7 @@ export default {
 
 export async function handleRequest(request, env) {
   const url = new URL(request.url);
+  if (url.hostname === "video.spheresce.com") return handleVideo(request, env);
   try {
     if (url.pathname === "/api/demo-requests") return await handleDemo(request, env);
     if (url.pathname === "/admin" || url.pathname.startsWith("/admin/")) return await handleAdmin(request, env);
