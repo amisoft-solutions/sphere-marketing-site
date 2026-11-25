@@ -463,7 +463,7 @@ function renderRow(request, row, csrf, filter, emailOn) {
     ["Request type", row.request_type],
     ["Updated", formatWhen(row.updated_at)],
     ["Approval email", `${emailStatus(row).detail}${expiryLabel(row)}`],
-  ].map(([label, value]) => `<div><dt>${escapeHtml(label)}</dt><dd>${escapeHtml(value || "—")}</dd></div>`).join("");
+  ].map(([label, value]) => `<div><dt>${escapeHtml(label)}</dt><dd>${escapeHtml(value || "-")}</dd></div>`).join("");
 
   const actions = STATUSES.map((status) => {
     if (status === row.status) return "";
@@ -492,7 +492,7 @@ function renderRow(request, row, csrf, filter, emailOn) {
 
 function emailStatus(row) {
   if (row.approval_email_claimed_at) return { detail: "Sending", failed: false };
-  if (row.approval_email_error) return { detail: `Failed: ${row.approval_email_error}`, failed: true };
+  if (row.approval_email_error) return { detail: `Failed, ${row.approval_email_error}`, failed: true };
   if (row.approval_email_sent_at) {
     return { detail: `Sent ${formatWhen(row.approval_email_sent_at)}`, failed: false };
   }

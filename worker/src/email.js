@@ -18,24 +18,24 @@ export function renderAdminNotification(record, adminUrl) {
   const lines = [
     "A new SPHERE demo request is waiting for review.",
     "",
-    `Name: ${record.fullName}`,
-    `Job title: ${record.jobTitle}`,
-    `Organization: ${record.organization}`,
-    `Work email: ${record.workEmail}`,
-    `Phone: ${record.phone}`,
-    `Country or region: ${record.country || "—"}`,
-    `Organization type: ${record.organizationType || "—"}`,
-    `Interested in: ${record.interest || "—"}`,
-    `Heard about SPHERE: ${record.heardAbout || "—"}`,
-    `Consent to be contacted: ${record.consentToContact ? "yes" : "no"}`,
-    `Request type: ${record.requestType}`,
-    `Status: ${record.status}`,
-    `Submitted: ${record.createdAt}`,
+    `Name, ${record.fullName}`,
+    `Job title, ${record.jobTitle}`,
+    `Organization, ${record.organization}`,
+    `Work email, ${record.workEmail}`,
+    `Phone, ${record.phone}`,
+    `Country or region, ${record.country || "-"}`,
+    `Organization type, ${record.organizationType || "-"}`,
+    `Interested in, ${record.interest || "-"}`,
+    `Heard about SPHERE, ${record.heardAbout || "-"}`,
+    `Consent to be contacted, ${record.consentToContact ? "yes" : "no"}`,
+    `Request type, ${record.requestType}`,
+    `Status, ${record.status}`,
+    `Submitted, ${record.createdAt}`,
     "",
     "The requester is not emailed by this system.",
   ];
   if (adminUrl) {
-    lines.push("", `Review the queue: ${adminUrl}`);
+    lines.push("", `Review the queue. ${adminUrl}`);
   }
   return lines.join("\n");
 }
@@ -142,7 +142,7 @@ export function renderApprovalEmail(row, link, ttlDays) {
   const text = [
     `Hello ${name},`,
     "",
-    "A Logic Pursuits Representative approved your demo request. You can watch the demo here:",
+    "A Logic Pursuits Representative approved your demo request. You can watch the demo here.",
     url,
     "",
     `This link expires in ${days} days.`,
@@ -153,7 +153,7 @@ export function renderApprovalEmail(row, link, ttlDays) {
   const safeUrl = escapeHtml(url);
   const html = [
     `<p>Hello ${safeName},</p>`,
-    "<p>A Logic Pursuits Representative approved your demo request. You can watch the demo here:</p>",
+    "<p>A Logic Pursuits Representative approved your demo request. You can watch the demo here.</p>",
     `<p><a href="${safeUrl}">${safeUrl}</a></p>`,
     `<p>This link expires in ${days} days.</p>`,
     "<p>Logic Pursuits Representative</p>",

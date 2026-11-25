@@ -173,7 +173,7 @@ test("a failed send can be resent, and a bad token cannot", async () => {
     env
   );
   const html = await page.text();
-  assert.match(html, /Failed: mailbox unavailable/);
+  assert.match(html, /Failed, mailbox unavailable/);
   assert.match(html, /Resend email/);
   assert.match(html, /Approving emails the requester the demo video link/);
 
@@ -244,7 +244,7 @@ test("approval HTML escapes the name and does not use a response address", async
   assert.equal(rendered.html.includes("<script>"), false);
   assert.match(rendered.text, /Hello Ann <script> & "quotes",/);
   assert.match(rendered.text, /A Logic Pursuits Representative approved your demo request/);
-  assert.match(rendered.html, /<p>A Logic Pursuits Representative approved your demo request\. You can watch the demo here:<\/p>/);
+  assert.match(rendered.html, /<p>A Logic Pursuits Representative approved your demo request\. You can watch the demo here\.<\/p>/);
   assert.match(rendered.text, /\nLogic Pursuits Representative$/);
   assert.match(rendered.html, /<p>Logic Pursuits Representative<\/p>/);
   assert.equal(rendered.text.includes("The SPHERE team approved"), false);

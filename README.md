@@ -4,6 +4,14 @@ Single-page product marketing site for **SPHERE** (Statistical Programming Hub f
 
 Layout rhythm inspired by ReceptWise (soft paper sections, pill CTAs, generous spacing, clear stacked sections). Brand locked to navy `#0A3D6F` + paper aesthetic — not ReceptWise teal.
 
+## Visible copy
+
+Visible copy on spheresce.com does not use an em dash, a colon, or a semicolon.
+
+Use a hyphen instead of an em dash (`—`, `&mdash;`, `&#8212;`, `&#x2014;`). Use a period or a comma instead of a colon or semicolon. Slight rewording is fine. Clock times such as `9:00` keep their colons. URLs keep `https://`. CSS, JavaScript, HTML syntax, and HTTP header values are not copy.
+
+`worker/test/copy-punctuation.test.js` runs with the other Worker tests on every pull request. It reads the marketing page, SVG text, demo-form messages, validation messages, the admin queue, both emails, and the video player. A later change that puts an em dash, colon, or semicolon back into that copy fails the check. The allowances live in `worker/test/visible-copy.js`.
+
 ## Structure (one long scroll)
 
 1. Sticky nav (anchor links only)
