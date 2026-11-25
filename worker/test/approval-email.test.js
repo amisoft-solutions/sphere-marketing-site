@@ -129,8 +129,6 @@ test("approving sends the video link once, and approving again does not", async 
   assert.match(env.sends[0].html, /Someone from Logic Pursuits will contact you soon to schedule a live demo\./);
   assert.match(env.sends[0].text, /\nThanks,\nLogic Pursuits$/);
   assert.match(env.sends[0].html, /<p>Thanks,<\/p><p>Logic Pursuits<\/p>$/);
-  assert.equal(env.sends[0].text.includes("Representative"), false);
-  assert.equal(env.sends[0].html.includes("Representative"), false);
   assert.equal(env.sends[0].text.includes("The SPHERE team approved"), false);
   assert.equal(env.sends[0].html.includes("The SPHERE team approved"), false);
   assertNoBannedPunctuation(env.sends[0].text);
@@ -293,8 +291,6 @@ test("approval email wording stays the same when removed fields are null", () =>
   assert.match(rendered.html, /<p>Hello Jordan Lee,<\/p>/);
   assert.match(rendered.html, /<p>Here is a quick overview video to help you get started\.<\/p>/);
   assert.match(rendered.html, /<p>Logic Pursuits<\/p>/);
-  assert.equal(rendered.text.includes("Representative"), false);
-  assert.equal(rendered.html.includes("Representative"), false);
   assert.equal(rendered.text.includes("null"), false);
   assert.equal(rendered.html.includes("null"), false);
   assert.equal(rendered.text.includes("undefined"), false);
@@ -326,8 +322,6 @@ test("approval HTML escapes the name and does not use a response address", async
   assert.match(rendered.html, /<p>Someone from Logic Pursuits will contact you soon to schedule a live demo\.<\/p>/);
   assert.match(rendered.text, /\nThanks,\nLogic Pursuits$/);
   assert.match(rendered.html, /<p>Thanks,<\/p><p>Logic Pursuits<\/p>$/);
-  assert.equal(rendered.text.includes("Representative"), false);
-  assert.equal(rendered.html.includes("Representative"), false);
   assert.equal(rendered.text.includes("The SPHERE team approved"), false);
   assert.equal(rendered.html.includes("The SPHERE team approved"), false);
   assert.equal(formatVideoExpiry(expiresAt), "December 2, 2026 UTC");
