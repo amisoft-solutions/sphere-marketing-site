@@ -95,6 +95,8 @@ export async function maybeNotify(env, record, options = {}) {
   return { sent: false, reason: "unknown-provider" };
 }
 
+export const REQUIRED_VIDEO_URL = "https://video.spheresce.com";
+
 export function approvalEmailEnabled(env) {
   return String(env && env.APPROVAL_EMAIL_ENABLED != null ? env.APPROVAL_EMAIL_ENABLED : "false").toLowerCase() === "true";
 }
@@ -136,7 +138,7 @@ export async function sendApprovalEmail(env, row) {
   const to = String((row && (row.work_email || row.workEmail)) || "").trim();
   const fromRaw = typeof env.EMAIL_FROM === "string" ? env.EMAIL_FROM.trim() : "";
   const videoUrl = typeof env.VIDEO_URL === "string" ? env.VIDEO_URL.trim() : "";
-  if (!to || !fromRaw || !videoUrl) {
+  if (!to || !fromRaw || videoUrl !== REQUIRED_VIDEO_URL) {
     throw new Error("Approval email is not configured.");
   }
   if (!env.SEND_EMAIL || typeof env.SEND_EMAIL.send !== "function") {
