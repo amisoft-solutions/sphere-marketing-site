@@ -14,23 +14,28 @@ export function notificationsEnabled(env) {
   return String(env && env.NOTIFY_EMAIL_ENABLED != null ? env.NOTIFY_EMAIL_ENABLED : "false").toLowerCase() === "true";
 }
 
+function labeled(label, value) {
+  const text = value == null ? "" : String(value).trim();
+  return text ? `${label} - ${text}` : `${label} -`;
+}
+
 export function renderAdminNotification(record, adminUrl) {
   const lines = [
     "A new SPHERE demo request is waiting for review.",
     "",
-    `Name, ${record.fullName}`,
-    `Job title, ${record.jobTitle}`,
-    `Organization, ${record.organization}`,
-    `Work email, ${record.workEmail}`,
-    `Phone, ${record.phone}`,
-    `Country or region, ${record.country || "-"}`,
-    `Organization type, ${record.organizationType || "-"}`,
-    `Interested in, ${record.interest || "-"}`,
-    `Heard about SPHERE, ${record.heardAbout || "-"}`,
-    `Consent to be contacted, ${record.consentToContact ? "yes" : "no"}`,
-    `Request type, ${record.requestType}`,
-    `Status, ${record.status}`,
-    `Submitted, ${record.createdAt}`,
+    labeled("Name", record.fullName),
+    labeled("Job title", record.jobTitle),
+    labeled("Organization", record.organization),
+    labeled("Work email", record.workEmail),
+    labeled("Phone", record.phone),
+    labeled("Country or region", record.country),
+    labeled("Organization type", record.organizationType),
+    labeled("Interested in", record.interest),
+    labeled("Heard about SPHERE", record.heardAbout),
+    labeled("Consent to be contacted", record.consentToContact ? "yes" : "no"),
+    labeled("Request type", record.requestType),
+    labeled("Status", record.status),
+    labeled("Submitted", record.createdAt),
     "",
     "The requester is not emailed by this system.",
   ];

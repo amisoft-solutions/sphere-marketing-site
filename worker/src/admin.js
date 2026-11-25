@@ -492,7 +492,7 @@ function renderRow(request, row, csrf, filter, emailOn) {
 
 function emailStatus(row) {
   if (row.approval_email_claimed_at) return { detail: "Sending", failed: false };
-  if (row.approval_email_error) return { detail: `Failed, ${row.approval_email_error}`, failed: true };
+  if (row.approval_email_error) return { detail: `Failed - ${row.approval_email_error}`, failed: true };
   if (row.approval_email_sent_at) {
     return { detail: `Sent ${formatWhen(row.approval_email_sent_at)}`, failed: false };
   }

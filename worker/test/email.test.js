@@ -21,7 +21,11 @@ const record = {
 
 test("notification text is an admin alert and not a demo delivery", () => {
   const text = renderAdminNotification(record, "https://worker.test/admin");
-  assert.match(text, /Jordan Lee/);
+  assert.match(text, /Name - Jordan Lee/);
+  assert.match(text, /^Country or region -$/m);
+  assert.equal(text.includes("Country or region - -"), false);
+  assert.match(text, /Organization type - CRO/);
+  assert.match(text, /Review the queue\. https:\/\/worker\.test\/admin/);
   assert.match(text, /not emailed/i);
   assert.doesNotMatch(text, /video/i);
   assert.doesNotMatch(text, /\.mp4|youtu|watch the demo/i);
