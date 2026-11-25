@@ -6,13 +6,10 @@ var FIELD_IDS = {
   organization: "organization",
   workEmail: "work-email",
   phone: "phone",
-  country: "country",
-  organizationType: "organization-type",
-  interest: "interest",
-  heardAbout: "heard-about",
-  consentToContact: "consent",
   requestType: "request-type",
 };
+
+var FORM_HASH = "#demo-request-form";
 
 var RETRY = "Something went wrong while sending your request. Please try again.";
 var submitting = false;
@@ -21,32 +18,15 @@ function reducedMotion() {
   return window.matchMedia && window.matchMedia("(prefers-reduced-motion: reduce)").matches;
 }
 
-function typeTokenFromLocation() {
-  var params = new URLSearchParams(window.location.search);
-  if (params.get("type")) return params.get("type");
-  var hash = window.location.hash || "";
-  var query = hash.indexOf("?");
-  if (query === -1) return "";
-  return new URLSearchParams(hash.slice(query + 1)).get("type") || "";
-}
-
 function presetRequestType() {
   var input = document.getElementById("request-type");
-  if (!input) return;
-  var token = typeTokenFromLocation();
-  if (!token || token === "demo") input.value = "Demo request";
+  if (input) input.value = "Demo request";
 }
 
-function scrollToContact() {
-  var section = document.getElementById("contact");
-  if (!section) return;
-  section.scrollIntoView({ behavior: reducedMotion() ? "auto" : "smooth", block: "start" });
-}
-
-function focusHeading() {
-  var title = document.getElementById("cta-title");
-  if (!title) return;
-  title.focus({ preventScroll: true });
+function scrollToForm() {
+  var form = document.getElementById("demo-request-form");
+  if (!form) return;
+  form.scrollIntoView({ behavior: reducedMotion() ? "auto" : "smooth", block: "start" });
 }
 
 function closeNav() {
@@ -56,22 +36,25 @@ function closeNav() {
   if (toggle) toggle.setAttribute("aria-expanded", "false");
 }
 
+function isLegacyDemoHash(hash) {
+  return hash === "#contact" || hash.indexOf("#contact?") === 0;
+}
+
 function bindDemoLinks() {
-  document.querySelectorAll('a[href="#contact"], a[href="#contact?type=demo"]').forEach(function (link) {
+  document.querySelectorAll("a[href]").forEach(function (link) {
+    var href = link.getAttribute("href") || "";
+    if (href !== FORM_HASH && href !== "#contact" && href !== "#contact?type=demo") return;
     link.addEventListener("click", function (event) {
       if (event.defaultPrevented || event.button !== 0) return;
       if (event.metaKey || event.ctrlKey || event.shiftKey || event.altKey) return;
-      var href = link.getAttribute("href") || "";
-      if (href !== "#contact" && href !== "#contact?type=demo") return;
-      presetRequestType();
       closeNav();
-      if (href === "#contact") return;
+      presetRequestType();
+      if (href === FORM_HASH) return;
       event.preventDefault();
       if (window.history && window.history.pushState) {
-        window.history.pushState({ demoRequest: true }, "", href);
+        window.history.pushState({ demoRequest: true }, "", FORM_HASH);
       }
-      scrollToContact();
-      focusHeading();
+      scrollToForm();
     });
   });
 }
@@ -80,8 +63,12 @@ function applyLocationPreset() {
   presetRequestType();
   var hash = window.location.hash || "";
   var type = new URLSearchParams(window.location.search).get("type");
-  if (hash.indexOf("#contact?") === 0) scrollToContact();
-  else if (!hash && type === "demo") scrollToContact();
+  if (hash === FORM_HASH) return;
+  if (!isLegacyDemoHash(hash) && !(hash === "" && type === "demo")) return;
+  if (window.history && window.history.replaceState) {
+    window.history.replaceState({ demoRequest: true }, "", (window.location.search || "") + FORM_HASH);
+  }
+  scrollToForm();
 }
 
 function init() {
@@ -191,11 +178,6 @@ function readBody(form) {
     organization: valueOf(form, "organization"),
     workEmail: valueOf(form, "workEmail"),
     phone: valueOf(form, "phone"),
-    country: valueOf(form, "country"),
-    organizationType: valueOf(form, "organizationType"),
-    interest: valueOf(form, "interest"),
-    heardAbout: valueOf(form, "heardAbout"),
-    consentToContact: checked(form, "consentToContact"),
     faxNumber: valueOf(form, "fax_number"),
     formLoadedAt: Number(valueOf(form, "formLoadedAt")),
   };
@@ -205,11 +187,6 @@ function valueOf(form, name) {
   var el = form.elements[name];
   if (!el || typeof el.value !== "string") return "";
   return el.value;
-}
-
-function checked(form, name) {
-  var el = form.elements[name];
-  return Boolean(el && el.checked);
 }
 
 function clearField(id) {

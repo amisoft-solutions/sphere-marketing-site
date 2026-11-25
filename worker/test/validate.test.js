@@ -12,49 +12,50 @@ function payload(overrides = {}) {
     organization: "Northwind Biometrics",
     workEmail: "jose.alvarez@northwindbio.example",
     phone: "+1 202 555 0143",
-    country: "",
-    organizationType: "",
-    interest: "",
-    heardAbout: "",
-    consentToContact: false,
     faxNumber: "",
     formLoadedAt: NOW - 10_000,
     ...overrides,
   };
 }
 
-test("accepts a complete demo request and normalizes strings", () => {
+test("accepts a short demo request and normalizes strings", () => {
   const result = validateDemoRequest(
     payload({
       fullName: "  Anne-Marie   O'Neill ",
-      country: " United Kingdom ",
-      organizationType: "Pharma/biotech",
-      interest: "Shells and the tracker.\nAudit trail.",
-      heardAbout: "Colleague",
-      consentToContact: true,
     }),
     NOW
   );
   assert.equal(result.ok, true);
   assert.equal(result.value.fullName, "Anne-Marie O'Neill");
-  assert.equal(result.value.country, "United Kingdom");
-  assert.equal(result.value.organizationType, "Pharma/biotech");
-  assert.equal(result.value.consentToContact, true);
+  assert.equal(result.value.jobTitle, "Lead Statistical Programmer");
+  assert.equal(result.value.organization, "Northwind Biometrics");
+  assert.equal(result.value.workEmail, "jose.alvarez@northwindbio.example");
+  assert.equal(result.value.phone, "+1 202 555 0143");
   assert.equal(result.value.requestType, "Demo request");
   assert.equal("faxNumber" in result.value, false);
+  for (const key of ["country", "organizationType", "interest", "heardAbout", "consentToContact"]) {
+    assert.equal(key in result.value, false, key);
+  }
 });
 
-test("accepts optional fields when they are omitted", () => {
-  const body = payload();
-  delete body.country;
-  delete body.organizationType;
-  delete body.interest;
-  delete body.heardAbout;
-  delete body.consentToContact;
-  const result = validateDemoRequest(body, NOW);
+test("accepts a short payload and ignores removed fields", () => {
+  const result = validateDemoRequest(
+    payload({
+      country: " United Kingdom ",
+      organizationType: "Hospital",
+      interest: "x".repeat(5000),
+      heardAbout: "<script>",
+      consentToContact: "maybe",
+    }),
+    NOW
+  );
   assert.equal(result.ok, true);
-  assert.equal(result.value.country, "");
-  assert.equal(result.value.consentToContact, false);
+  assert.equal(result.value.fullName, "José Álvarez");
+  assert.equal("country" in result.value, false);
+  assert.equal("organizationType" in result.value, false);
+  assert.equal("interest" in result.value, false);
+  assert.equal("heardAbout" in result.value, false);
+  assert.equal("consentToContact" in result.value, false);
 });
 
 test("reports every missing required field", () => {
@@ -86,18 +87,6 @@ test("rejects malformed email and phone but accepts permissive international num
     assert.equal(isValidPhone(phone), true, phone);
     assert.equal(validateDemoRequest(payload({ phone }), NOW).ok, true, phone);
   }
-});
-
-test("rejects unknown organization types and over-long optional text", () => {
-  const badType = validateDemoRequest(payload({ organizationType: "Hospital" }), NOW);
-  assert.equal(badType.ok, false);
-  assert.ok(badType.fields.organizationType);
-
-  const longInterest = validateDemoRequest(payload({ interest: "a".repeat(1001) }), NOW);
-  assert.equal(longInterest.fields.interest.includes("1000"), true);
-
-  const longHeard = validateDemoRequest(payload({ heardAbout: "a".repeat(161) }), NOW);
-  assert.ok(longHeard.fields.heardAbout);
 });
 
 test("rejects a filled honeypot without field hints", () => {
