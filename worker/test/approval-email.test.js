@@ -261,6 +261,7 @@ test("rejected and pending requests are not emailed", async () => {
 });
 
 test("approval email wording stays the same when removed fields are null", () => {
+  const expiresAt = "2026-12-02T15:04:00.000Z";
   const rendered = renderApprovalEmail(
     {
       full_name: "Jordan Lee",
@@ -271,24 +272,29 @@ test("approval email wording stays the same when removed fields are null", () =>
       consent_to_contact: null,
     },
     `${VIDEO}/v/example.token`,
-    7
+    expiresAt
   );
   assert.equal(
     rendered.text,
     [
       "Hello Jordan Lee,",
       "",
-      "A Logic Pursuits Representative approved your demo request. You can watch the demo here:",
+      "Here is a quick overview video to help you get started.",
       `${VIDEO}/v/example.token`,
       "",
-      "This link expires in 7 days.",
+      "This link is just for you and expires on December 2, 2026 UTC.",
       "",
-      "Logic Pursuits Representative",
+      "Someone from Logic Pursuits will contact you soon to schedule a live demo.",
+      "",
+      "Thanks,",
+      "Logic Pursuits",
     ].join("\n")
   );
   assert.match(rendered.html, /<p>Hello Jordan Lee,<\/p>/);
-  assert.match(rendered.html, /<p>A Logic Pursuits Representative approved your demo request\. You can watch the demo here:<\/p>/);
-  assert.match(rendered.html, /<p>Logic Pursuits Representative<\/p>/);
+  assert.match(rendered.html, /<p>Here is a quick overview video to help you get started\.<\/p>/);
+  assert.match(rendered.html, /<p>Logic Pursuits<\/p>/);
+  assert.equal(rendered.text.includes("Representative"), false);
+  assert.equal(rendered.html.includes("Representative"), false);
   assert.equal(rendered.text.includes("null"), false);
   assert.equal(rendered.html.includes("null"), false);
   assert.equal(rendered.text.includes("undefined"), false);
