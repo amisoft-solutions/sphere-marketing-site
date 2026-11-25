@@ -105,20 +105,20 @@ Optional rate-limit vars, if the defaults (8 demo posts per IP per hour, 8 admin
 
 When an admin marks a request approved, the Worker can email that person the demo video link. `APPROVAL_EMAIL_ENABLED` is `false` in `wrangler.toml`. Leave it false until `https://video.spheresce.com` resolves and spheresce.com is onboarded to Email Sending. The queue works with the flag off.
 
-The message is sent with the `SEND_EMAIL` binding (`[[send_email]]` / `name = "SEND_EMAIL"`). There is no `destination_address` and no `allowed_destination_addresses`, so a requester at any address can receive it. Sending to arbitrary recipients requires the Workers Paid plan. The Workers Free plan can send only to verified destination addresses.
+The message is sent with the `SEND_EMAIL` binding. Recipients are not restricted. `allowed_sender_addresses` is only `no-reply@spheresce.com`, so the from address cannot drift. Sending to arbitrary recipients requires the Workers Paid plan. The Workers Free plan can send only to verified destination addresses.
 
 `EMAIL_FROM` is `SPHERE team <no-reply@spheresce.com>`. `VIDEO_URL` is `https://video.spheresce.com`. The message greets the person by name, includes that video link, and signs off as the SPHERE team. It does not set a response address.
 
 Onboard spheresce.com before turning the flag on:
 
 1. The zone must use Cloudflare DNS. In the dashboard, open Compute > Email Service > Email Sending and choose Onboard Domain for spheresce.com.
-2. Apply the `cf-bounce` records Cloudflare shows. They are:
+2. Apply the `cf-bounce` records Cloudflare shows. Leave the apex MX and SPF records alone. The new records are:
    - MX records on `cf-bounce.spheresce.com` so bounces route to Cloudflare.
    - TXT on `cf-bounce.spheresce.com`: `v=spf1 include:_spf.mx.cloudflare.net ~all`
    - TXT on `cf-bounce._domainkey.spheresce.com` for the DKIM key Cloudflare generates.
-3. Add DMARC. If the zone has no DMARC record, onboarding adds `_dmarc.spheresce.com`. Cloudflare’s default when none exists is `v=DMARC1; p=reject`. If anything else already sends as spheresce.com, start with `p=none`, confirm the new mail authenticates, then tighten the policy. Use the exact records from the dashboard.
+3. Add DMARC on `_dmarc.spheresce.com`. Onboarding may add `v=DMARC1; p=reject` when no DMARC record exists. If anything else might send as `@spheresce.com`, start with `p=none`, confirm the new mail authenticates, then tighten the policy. Use the exact records from the dashboard. Leave `APPROVAL_EMAIL_ENABLED` false until `https://video.spheresce.com` resolves.
 
-Approving a request claims the row (`approval_email_claimed_at` is set only when `approval_email_sent_at` and `approval_email_claimed_at` are both empty), sends once, then sets `approval_email_sent_at`. A failed send stores `approval_email_error` and clears the claim. The admin queue can resend that failed message. Approving the same request again does not send a second message after a successful send. Rejected and pending requests are not emailed.
+Approving a request claims the row when it has not been sent and there is no claim from the last 3 minutes, sends once, then sets `approval_email_sent_at`. A failed send stores `approval_email_error` and clears the claim. A claim older than 3 minutes is recorded as failed so the queue does not stay on “Sending”; resend is then allowed. A duplicate is possible only if the first send had already left before that timeout. Approved rows that never got an email, including ones approved while the flag was off, have a Send action while the flag is on. Approving the same request again does not send a second message after a successful send. Rejected and pending requests are not emailed.
 
 Admin notification mail below stays off. Do not set `NOTIFY_TO` for this feature.
 

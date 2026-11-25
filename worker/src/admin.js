@@ -16,6 +16,8 @@ const SESSION_MS = 12 * 60 * 60 * 1000;
 const COOKIE = "sphere_admin";
 const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[1-8][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
 const STATUSES = ["pending", "approved", "rejected"];
+export const APPROVAL_CLAIM_TTL_MS = 3 * 60 * 1000;
+const STALE_CLAIM_ERROR = "The send did not finish. You can resend it.";
 
 export async function handleAdmin(request, env) {
   const url = new URL(request.url);
@@ -28,6 +30,10 @@ export async function handleAdmin(request, env) {
   const resendMatch = url.pathname.match(/^\/admin\/requests\/([0-9a-f-]+)\/resend$/i);
   if (resendMatch && request.method === "POST") {
     return resendApproval(request, env, resendMatch[1]);
+  }
+  const sendMatch = url.pathname.match(/^\/admin\/requests\/([0-9a-f-]+)\/send$/i);
+  if (sendMatch && request.method === "POST") {
+    return sendApproval(request, env, sendMatch[1]);
   }
   const statusMatch = url.pathname.match(/^\/admin\/requests\/([0-9a-f-]+)$/i);
   if (statusMatch && request.method === "POST") {
@@ -98,6 +104,7 @@ async function logout(request, env) {
 async function listPage(request, env, url) {
   const session = await loadSession(request, env);
   if (!session) return html(loginDocument(""), 200);
+  await expireStaleApprovalClaims(env);
   const filter = normalizeFilter(url.searchParams.get("status"));
   const counts = await statusCounts(env.DB);
   const rows = filter === "all"
@@ -149,8 +156,9 @@ async function resendApproval(request, env, id) {
   if (!approvalEmailEnabled(env)) {
     return html(queueMessage("Approval email is off."), 400);
   }
+  await expireStaleApprovalClaims(env);
   const row = await env.DB.prepare(
-    "SELECT status, approval_email_sent_at, approval_email_error FROM demo_requests WHERE id = ?"
+    "SELECT status, approval_email_sent_at, approval_email_claimed_at, approval_email_error FROM demo_requests WHERE id = ?"
   ).bind(id).first();
   if (!row) return text("Not found", 404);
   if (row.status !== "approved" || row.approval_email_sent_at || !row.approval_email_error) {
@@ -164,17 +172,57 @@ async function resendApproval(request, env, id) {
   });
 }
 
+export async function expireStaleApprovalClaims(env, now = Date.now()) {
+  const cutoff = new Date(now - APPROVAL_CLAIM_TTL_MS).toISOString();
+  await env.DB.prepare(
+    `UPDATE demo_requests
+     SET approval_email_error = ?, approval_email_claimed_at = NULL
+     WHERE approval_email_sent_at IS NULL
+       AND approval_email_claimed_at IS NOT NULL
+       AND approval_email_claimed_at <= ?`
+  ).bind(STALE_CLAIM_ERROR, cutoff).run();
+  return cutoff;
+}
+
+async function sendApproval(request, env, id) {
+  const session = await loadSession(request, env);
+  if (!session) return html(loginDocument("Sign in to update a request."), 401);
+  if (!UUID_RE.test(id)) return text("Not found", 404);
+  const body = await readBodyObject(request);
+  if (!timingSafeEqual(String(body.csrf || ""), session.csrf_token)) {
+    return html(queueMessage("The page expired. Reload it and try again."), 403);
+  }
+  if (!approvalEmailEnabled(env)) {
+    return html(queueMessage("Approval email is off."), 400);
+  }
+  await expireStaleApprovalClaims(env);
+  const row = await env.DB.prepare(
+    "SELECT status, approval_email_sent_at, approval_email_claimed_at, approval_email_error FROM demo_requests WHERE id = ?"
+  ).bind(id).first();
+  if (!row) return text("Not found", 404);
+  if (row.status !== "approved" || row.approval_email_sent_at || row.approval_email_claimed_at || row.approval_email_error) {
+    return html(queueMessage("This request is not waiting for its first approval email."), 400);
+  }
+  await deliverApprovalEmail(env, id);
+  const back = STATUSES.includes(String(body.return_status || "")) ? `?status=${body.return_status}` : "";
+  return new Response(null, {
+    status: 303,
+    headers: baseHeaders({ Location: `/admin${back}` }),
+  });
+}
+
 export async function deliverApprovalEmail(env, id) {
   if (!approvalEmailEnabled(env)) return { sent: false, reason: "disabled" };
   const claimAt = new Date().toISOString();
+  const staleBefore = new Date(Date.now() - APPROVAL_CLAIM_TTL_MS).toISOString();
   const claim = await env.DB.prepare(
     `UPDATE demo_requests
-     SET approval_email_claimed_at = ?
+     SET approval_email_claimed_at = ?, approval_email_error = NULL
      WHERE id = ?
        AND status = 'approved'
        AND approval_email_sent_at IS NULL
-       AND approval_email_claimed_at IS NULL`
-  ).bind(claimAt, id).run();
+       AND (approval_email_claimed_at IS NULL OR approval_email_claimed_at <= ?)`
+  ).bind(claimAt, id, staleBefore).run();
   if (!claim.meta || claim.meta.changes < 1) return { sent: false, reason: "not-claimed" };
   const row = await env.DB.prepare(
     "SELECT id, full_name, work_email, status FROM demo_requests WHERE id = ?"
@@ -378,14 +426,23 @@ function emailStatus(row) {
 
 function emailCell(row, csrf, filter, emailOn) {
   const status = emailStatus(row);
-  const resend = emailOn && status.failed
+  const back = escapeHtml(filter === "all" ? "" : filter);
+  const token = escapeHtml(csrf);
+  const resend = emailOn && row.status === "approved" && status.failed
     ? `<form method="post" action="/admin/requests/${escapeHtml(row.id)}/resend">
-        <input type="hidden" name="csrf" value="${escapeHtml(csrf)}" />
-        <input type="hidden" name="return_status" value="${escapeHtml(filter === "all" ? "" : filter)}" />
+        <input type="hidden" name="csrf" value="${token}" />
+        <input type="hidden" name="return_status" value="${back}" />
         <button type="submit">Resend email</button>
       </form>`
     : "";
-  return `${escapeHtml(status.detail)}${resend}`;
+  const send = emailOn && row.status === "approved" && !row.approval_email_sent_at && !row.approval_email_claimed_at && !row.approval_email_error
+    ? `<form method="post" action="/admin/requests/${escapeHtml(row.id)}/send">
+        <input type="hidden" name="csrf" value="${token}" />
+        <input type="hidden" name="return_status" value="${back}" />
+        <button type="submit">Send email</button>
+      </form>`
+    : "";
+  return `${escapeHtml(status.detail)}${send}${resend}`;
 }
 
 function actionLabel(status) {
