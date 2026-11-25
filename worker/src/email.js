@@ -169,8 +169,10 @@ export async function sendApprovalEmail(env, row) {
   if (!env.SEND_EMAIL || typeof env.SEND_EMAIL.send !== "function") {
     throw new Error("Email sending is not configured.");
   }
-  const previousExpiry = row && row.video_link_expires_at ? Math.floor(Date.parse(row.video_link_expires_at) / 1000) : 0;
-  const videoLink = await createVideoLink(env, row.id || row.requestId, Date.now(), previousExpiry);
+  const previous = row && row.video_link_expires_at ? Math.floor(Date.parse(row.video_link_expires_at) / 1000) : 0;
+  const natural = Math.floor(Date.now() / 1000) + videoLinkTtlDays(env) * 86400;
+  const notBefore = row && row.approval_email_sent_at ? Math.max(previous, natural) : previous;
+  const videoLink = await createVideoLink(env, row.id || row.requestId, Date.now(), notBefore);
   const message = renderApprovalEmail(row, videoLink.link, videoLink.days);
   await env.SEND_EMAIL.send({
     to,

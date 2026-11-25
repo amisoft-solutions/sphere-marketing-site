@@ -264,6 +264,7 @@ test("Send emails an approved request that was stored while the flag was off", a
   const html = await shown.text();
   assert.match(html, />Send email</);
   assert.equal(html.includes(">Resend email<"), false);
+  assert.equal(html.includes(">Send new link<"), false);
 
   const forged = await postForm(env, `/admin/requests/${id}/send`, cookie, "csrf=nope");
   assert.equal(forged.status, 403);
@@ -371,4 +372,80 @@ test("Send new link reissues a link after a successful send", async () => {
   assert.notEqual(firstLink, secondLink);
   const stored = db.prepare("SELECT video_link_expires_at FROM demo_requests WHERE id = ?").get(id);
   assert.ok(stored.video_link_expires_at);
+});
+
+test("rejecting a request invalidates its link until a new one is issued", async () => {
+  const db = createDb();
+  const env = mailEnv(db);
+  await postDemo(env, payload({ fullName: "Jordan Lee" }), "203.0.113.96");
+  const { cookie, csrf } = await signIn(env, "203.0.113.97");
+  const id = db.prepare("SELECT id FROM demo_requests").get().id;
+  await postForm(env, `/admin/requests/${id}`, cookie, `csrf=${csrf}&status=approved`);
+  const firstLink = env.sends[0].text.match(/https:\/\/video\.spheresce\.com\/v\/\S+/)[0];
+  const firstToken = firstLink.split("/v/")[1];
+  const before = await worker.fetch(new Request(firstLink), env);
+  assert.equal(before.status, 200);
+
+  const rejected = await postForm(env, `/admin/requests/${id}`, cookie, `csrf=${csrf}&status=rejected`);
+  assert.equal(rejected.status, 303);
+  assert.equal(db.prepare("SELECT video_link_expires_at FROM demo_requests WHERE id = ?").get(id).video_link_expires_at, null);
+  const afterReject = await worker.fetch(new Request(firstLink), env);
+  assert.equal(afterReject.status, 410);
+
+  const reapproved = await postForm(env, `/admin/requests/${id}`, cookie, `csrf=${csrf}&status=approved`);
+  assert.equal(reapproved.status, 303);
+  assert.equal(env.sends.length, 1);
+  assert.equal(db.prepare("SELECT video_link_expires_at, approval_email_sent_at FROM demo_requests WHERE id = ?").get(id).video_link_expires_at, null);
+  const afterReapprove = await worker.fetch(new Request(firstLink), env);
+  assert.equal(afterReapprove.status, 410);
+
+  const renewed = await postForm(env, `/admin/requests/${id}/new-link`, cookie, `csrf=${csrf}`);
+  assert.equal(renewed.status, 303);
+  assert.equal(env.sends.length, 2);
+  const secondToken = env.sends[1].text.match(/https:\/\/video\.spheresce\.com\/v\/\S+/)[0].split("/v/")[1];
+  assert.notEqual(firstToken, secondToken);
+  assert.equal((await worker.fetch(new Request(firstLink), env)).status, 410);
+  assert.equal((await worker.fetch(new Request(`https://video.spheresce.com/v/${secondToken}`), env)).status, 200);
+});
+
+test("a failed new link stays visible and a claimed reissue can expire", async () => {
+  const db = createDb();
+  let fail = false;
+  const env = mailEnv(db, {
+    SEND_EMAIL: {
+      send: async (message) => {
+        env.sends.push(message);
+        if (fail) throw new Error("new link failed");
+      },
+    },
+  });
+  await postDemo(env, payload(), "203.0.113.98");
+  const { cookie, csrf } = await signIn(env, "203.0.113.99");
+  const id = db.prepare("SELECT id FROM demo_requests").get().id;
+  await postForm(env, `/admin/requests/${id}`, cookie, `csrf=${csrf}&status=approved&return_status=approved`);
+  fail = true;
+  const failed = await postForm(env, `/admin/requests/${id}/new-link`, cookie, `csrf=${csrf}&return_status=approved`);
+  assert.equal(failed.status, 400);
+  assert.match(await failed.text(), /new link failed/);
+  const row = db.prepare("SELECT approval_email_sent_at, approval_email_error, approval_email_claimed_at FROM demo_requests WHERE id = ?").get(id);
+  assert.ok(row.approval_email_sent_at);
+  assert.match(row.approval_email_error, /new link failed/);
+  assert.equal(row.approval_email_claimed_at, null);
+  const page = await worker.fetch(
+    new Request("https://worker.test/admin?status=approved", { headers: { Cookie: `sphere_admin=${cookie}` } }),
+    env
+  );
+  const html = await page.text();
+  assert.match(html, /new link failed/);
+  assert.match(html, />Send new link</);
+
+  const stale = new Date(Date.now() - 4 * 60 * 1000).toISOString();
+  db.prepare(
+    "UPDATE demo_requests SET approval_email_claimed_at = ?, approval_email_error = NULL WHERE id = ?"
+  ).run(stale, id);
+  await expireStaleApprovalClaims(env);
+  const expired = db.prepare("SELECT approval_email_sent_at, approval_email_claimed_at, approval_email_error FROM demo_requests WHERE id = ?").get(id);
+  assert.ok(expired.approval_email_sent_at);
+  assert.equal(expired.approval_email_claimed_at, null);
+  assert.match(expired.approval_email_error, /resend/i);
 });
