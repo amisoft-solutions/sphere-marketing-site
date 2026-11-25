@@ -33,9 +33,8 @@ export function renderAdminNotification(record, adminUrl) {
   appendFilled(lines, "Organization type", record.organizationType);
   appendFilled(lines, "Interested in", record.interest);
   appendFilled(lines, "Heard about SPHERE", record.heardAbout);
-  if (record.consentToContact != null && record.consentToContact !== "") {
-    lines.push(labeled("Consent to be contacted", record.consentToContact ? "yes" : "no"));
-  }
+  const consent = consentAnswer(record);
+  if (consent) lines.push(labeled("Consent to be contacted", consent));
   lines.push(
     labeled("Request type", record.requestType),
     labeled("Status", record.status),
@@ -47,6 +46,13 @@ export function renderAdminNotification(record, adminUrl) {
     lines.push("", `Review the queue. ${adminUrl}`);
   }
   return lines.join("\n");
+}
+
+function consentAnswer(record) {
+  if (!record) return "";
+  const value = Object.hasOwn(record, "consentToContact") ? record.consentToContact : record.consent_to_contact;
+  if (value == null || value === "") return "";
+  return value ? "yes" : "no";
 }
 
 function appendFilled(lines, label, value) {

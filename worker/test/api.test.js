@@ -1,4 +1,5 @@
 import assert from "node:assert/strict";
+import { readFileSync } from "node:fs";
 import test from "node:test";
 import worker from "../src/index.js";
 import { requestDetailItems } from "../src/admin.js";
@@ -62,7 +63,8 @@ test("stores a valid request and keeps the service document free of the admin pa
   assert.equal(row.organization_type, "");
   assert.equal(row.interest, "");
   assert.equal(row.heard_about, "");
-  assert.equal(row.consent_to_contact, 0);
+  assert.equal(row.consent_to_contact, null);
+  assert.match(readFileSync(new URL("../src/index.js", import.meta.url), "utf8"), /consent_to_contact,\s*user_agent[\s\S]*NULL,/);
   assert.equal(row.user_agent, "SpherePreview/1.0");
   assert.equal(row.work_email, "jordan.lee@northwindbio.example");
 });
@@ -366,7 +368,7 @@ test("a short request still stores and the queue renders without the removed ans
   assert.equal(row.organization_type, "");
   assert.equal(row.interest, "");
   assert.equal(row.heard_about, "");
-  assert.equal(row.consent_to_contact, 0);
+  assert.equal(row.consent_to_contact, null);
 
   const login = await worker.fetch(
     new Request("https://worker.test/admin/login", {
@@ -387,5 +389,5 @@ test("a short request still stores and the queue renders without the removed ans
   assert.equal(html.includes("Country or region"), false);
   assert.equal(html.includes("Organization type"), false);
   assert.equal(html.includes("Heard about SPHERE"), false);
-  assert.match(html, /<dt>Consent to be contacted<\/dt><dd>No<\/dd>/);
+  assert.equal(html.includes("Consent to be contacted"), false);
 });

@@ -55,6 +55,18 @@ test("notification text omits removed fields when they are missing", () => {
   assert.equal(text.includes("—"), false);
 });
 
+test("notification consent line uses a hyphen only when an answer was stored", () => {
+  const without = { ...record };
+  delete without.consentToContact;
+  assert.equal(renderAdminNotification(without).includes("Consent to be contacted"), false);
+  assert.equal(renderAdminNotification({ ...record, consentToContact: null }).includes("Consent to be contacted"), false);
+  assert.match(renderAdminNotification({ ...record, consentToContact: 1 }), /Consent to be contacted - yes/);
+  assert.match(renderAdminNotification({ ...record, consentToContact: 0 }), /Consent to be contacted - no/);
+  assert.match(renderAdminNotification({ consent_to_contact: 1, fullName: "Jordan Lee" }), /Consent to be contacted - yes/);
+  assert.match(renderAdminNotification({ consent_to_contact: 0, fullName: "Jordan Lee" }), /Consent to be contacted - no/);
+  assert.equal(renderAdminNotification({ consent_to_contact: null, fullName: "Jordan Lee" }).includes("Consent to be contacted"), false);
+});
+
 test("does not send mail while the feature flag is off", async () => {
   const calls = [];
   const result = await maybeNotify(
