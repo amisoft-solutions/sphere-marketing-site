@@ -16,37 +16,72 @@ const SESSION_MS = 12 * 60 * 60 * 1000;
 const COOKIE = "sphere_admin";
 const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[1-8][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
 const STATUSES = ["pending", "approved", "rejected"];
+export const ADMIN_HOST = "admin.spheresce.com";
 export const APPROVAL_CLAIM_TTL_MS = 3 * 60 * 1000;
 const STALE_CLAIM_ERROR = "The send did not finish. You can resend it.";
 
 export async function handleAdmin(request, env) {
   const url = new URL(request.url);
-  if (url.pathname === "/admin/login" && request.method === "POST") {
+  const path = canonicalAdminPath(url);
+  if (path === "/admin/login" && request.method === "POST") {
     return login(request, env);
   }
-  if (url.pathname === "/admin/logout" && request.method === "POST") {
+  if (path === "/admin/logout" && request.method === "POST") {
     return logout(request, env);
   }
-  const resendMatch = url.pathname.match(/^\/admin\/requests\/([0-9a-f-]+)\/resend$/i);
+  const resendMatch = path.match(/^\/admin\/requests\/([0-9a-f-]+)\/resend$/i);
   if (resendMatch && request.method === "POST") {
     return resendApproval(request, env, resendMatch[1]);
   }
-  const sendMatch = url.pathname.match(/^\/admin\/requests\/([0-9a-f-]+)\/send$/i);
+  const sendMatch = path.match(/^\/admin\/requests\/([0-9a-f-]+)\/send$/i);
   if (sendMatch && request.method === "POST") {
     return sendApproval(request, env, sendMatch[1]);
   }
-  const newLinkMatch = url.pathname.match(/^\/admin\/requests\/([0-9a-f-]+)\/new-link$/i);
+  const newLinkMatch = path.match(/^\/admin\/requests\/([0-9a-f-]+)\/new-link$/i);
   if (newLinkMatch && request.method === "POST") {
     return sendNewLink(request, env, newLinkMatch[1]);
   }
-  const statusMatch = url.pathname.match(/^\/admin\/requests\/([0-9a-f-]+)$/i);
+  const statusMatch = path.match(/^\/admin\/requests\/([0-9a-f-]+)$/i);
   if (statusMatch && request.method === "POST") {
     return updateStatus(request, env, statusMatch[1]);
   }
-  if (url.pathname === "/admin" && request.method === "GET") {
+  if (path === "/admin" && request.method === "GET") {
     return listPage(request, env, url);
   }
   return text("Not found", 404);
+}
+
+function onAdminHost(request) {
+  return new URL(request.url).hostname === ADMIN_HOST;
+}
+
+function adminRoute(request, suffix = "") {
+  if (!onAdminHost(request)) return `/admin${suffix}`;
+  if (!suffix) return "/";
+  if (suffix.startsWith("?")) return `/${suffix}`;
+  return suffix.startsWith("/") ? suffix : `/${suffix}`;
+}
+
+function canonicalAdminPath(url) {
+  if (url.hostname !== ADMIN_HOST) return url.pathname;
+  const path = url.pathname;
+  if (path === "/" || path === "") return "/admin";
+  if (path === "/login" || path === "/logout" || path.startsWith("/requests/")) return `/admin${path}`;
+  return path;
+}
+
+function cookieHeader(request, env, token, maxAge) {
+  return sessionCookie(token, {
+    secure: cookieIsSecure(request, env),
+    maxAge,
+    domain: onAdminHost(request) ? ADMIN_HOST : undefined,
+  });
+}
+
+function queueLocation(request, returnStatus) {
+  const status = String(returnStatus || "");
+  const query = STATUSES.includes(status) ? `?status=${status}` : "";
+  return adminRoute(request, query);
 }
 
 async function login(request, env) {
@@ -58,10 +93,10 @@ async function login(request, env) {
     limited = hit.limited;
   } catch (err) {
     console.error("admin rate limit failed", err && err.message);
-    return html(loginDocument("The sign-in page is temporarily unavailable. Please try again."), 503);
+    return html(loginDocument(request, "The sign-in page is temporarily unavailable. Please try again."), 503);
   }
   if (limited) {
-    return html(loginDocument("Too many sign-in attempts. Please wait and try again."), 429);
+    return html(loginDocument(request, "Too many sign-in attempts. Please wait and try again."), 429);
   }
 
   const body = await readBodyObject(request);
@@ -69,7 +104,7 @@ async function login(request, env) {
   const secret = typeof env.ADMIN_PASSWORD === "string" ? env.ADMIN_PASSWORD : "";
   const matches = secret ? await passwordsMatch(provided, secret) : await passwordsMatch(provided, "missing-admin-secret");
   if (!secret || !matches) {
-    return html(loginDocument("That password was not accepted."), 401);
+    return html(loginDocument(request, "That password was not accepted."), 401);
   }
 
   const token = randomToken();
@@ -85,8 +120,8 @@ async function login(request, env) {
   return new Response(null, {
     status: 303,
     headers: baseHeaders({
-      Location: "/admin",
-      "Set-Cookie": sessionCookie(token, { secure: cookieIsSecure(request, env), maxAge: Math.floor(SESSION_MS / 1000) }),
+      Location: adminRoute(request),
+      "Set-Cookie": cookieHeader(request, env, token, Math.floor(SESSION_MS / 1000)),
     }),
   });
 }
@@ -99,15 +134,15 @@ async function logout(request, env) {
   return new Response(null, {
     status: 303,
     headers: baseHeaders({
-      Location: "/admin",
-      "Set-Cookie": sessionCookie("", { secure: cookieIsSecure(request, env), maxAge: 0 }),
+      Location: adminRoute(request),
+      "Set-Cookie": cookieHeader(request, env, "", 0),
     }),
   });
 }
 
 async function listPage(request, env, url) {
   const session = await loadSession(request, env);
-  if (!session) return html(loginDocument(""), 200);
+  if (!session) return html(loginDocument(request, ""), 200);
   await expireStaleApprovalClaims(env);
   const filter = normalizeFilter(url.searchParams.get("status"));
   const counts = await statusCounts(env.DB);
@@ -118,20 +153,20 @@ async function listPage(request, env, url) {
     : await env.DB.prepare(
       "SELECT * FROM demo_requests WHERE status = ? ORDER BY created_at DESC LIMIT 200"
     ).bind(filter).all();
-  return html(queueDocument(session.csrf_token, filter, counts, rows.results || [], approvalEmailEnabled(env)), 200);
+  return html(queueDocument(request, session.csrf_token, filter, counts, rows.results || [], approvalEmailEnabled(env)), 200);
 }
 
 async function updateStatus(request, env, id) {
   const session = await loadSession(request, env);
-  if (!session) return html(loginDocument("Sign in to update a request."), 401);
+  if (!session) return html(loginDocument(request, "Sign in to update a request."), 401);
   if (!UUID_RE.test(id)) return text("Not found", 404);
   const body = await readBodyObject(request);
   if (!timingSafeEqual(String(body.csrf || ""), session.csrf_token)) {
-    return html(queueMessage("The page expired. Reload it and try again."), 403);
+    return html(queueMessage(request, "The page expired. Reload it and try again."), 403);
   }
   const status = String(body.status || "");
   if (!STATUSES.includes(status)) {
-    return html(queueMessage("Choose pending, approved, or rejected."), 400);
+    return html(queueMessage(request, "Choose pending, approved, or rejected."), 400);
   }
   const updated = new Date().toISOString();
   const existing = await env.DB.prepare("SELECT id FROM demo_requests WHERE id = ?").bind(id).first();
@@ -148,23 +183,22 @@ async function updateStatus(request, env, id) {
        WHERE id = ?`
     ).bind(status, updated, id).run();
   }
-  const back = STATUSES.includes(String(body.return_status || "")) ? `?status=${body.return_status}` : "";
   return new Response(null, {
     status: 303,
-    headers: baseHeaders({ Location: `/admin${back}` }),
+    headers: baseHeaders({ Location: queueLocation(request, body.return_status) }),
   });
 }
 
 async function resendApproval(request, env, id) {
   const session = await loadSession(request, env);
-  if (!session) return html(loginDocument("Sign in to update a request."), 401);
+  if (!session) return html(loginDocument(request, "Sign in to update a request."), 401);
   if (!UUID_RE.test(id)) return text("Not found", 404);
   const body = await readBodyObject(request);
   if (!timingSafeEqual(String(body.csrf || ""), session.csrf_token)) {
-    return html(queueMessage("The page expired. Reload it and try again."), 403);
+    return html(queueMessage(request, "The page expired. Reload it and try again."), 403);
   }
   if (!approvalEmailEnabled(env)) {
-    return html(queueMessage("Approval email is off."), 400);
+    return html(queueMessage(request, "Approval email is off."), 400);
   }
   await expireStaleApprovalClaims(env);
   const row = await env.DB.prepare(
@@ -172,13 +206,12 @@ async function resendApproval(request, env, id) {
   ).bind(id).first();
   if (!row) return text("Not found", 404);
   if (row.status !== "approved" || row.approval_email_sent_at || !row.approval_email_error) {
-    return html(queueMessage("This request does not have a failed approval email to resend."), 400);
+    return html(queueMessage(request, "This request does not have a failed approval email to resend."), 400);
   }
   await deliverApprovalEmail(env, id);
-  const back = STATUSES.includes(String(body.return_status || "")) ? `?status=${body.return_status}` : "";
   return new Response(null, {
     status: 303,
-    headers: baseHeaders({ Location: `/admin${back}` }),
+    headers: baseHeaders({ Location: queueLocation(request, body.return_status) }),
   });
 }
 
@@ -195,43 +228,42 @@ export async function expireStaleApprovalClaims(env, now = Date.now()) {
 
 async function sendNewLink(request, env, id) {
   const session = await loadSession(request, env);
-  if (!session) return html(loginDocument("Sign in to update a request."), 401);
+  if (!session) return html(loginDocument(request, "Sign in to update a request."), 401);
   if (!UUID_RE.test(id)) return text("Not found", 404);
   const body = await readBodyObject(request);
   if (!timingSafeEqual(String(body.csrf || ""), session.csrf_token)) {
-    return html(queueMessage("The page expired. Reload it and try again."), 403);
+    return html(queueMessage(request, "The page expired. Reload it and try again."), 403);
   }
-  if (!approvalEmailEnabled(env)) return html(queueMessage("Approval email is off."), 400);
+  if (!approvalEmailEnabled(env)) return html(queueMessage(request, "Approval email is off."), 400);
   await expireStaleApprovalClaims(env);
   const row = await env.DB.prepare("SELECT status FROM demo_requests WHERE id = ?").bind(id).first();
   if (!row) return text("Not found", 404);
   if (row.status !== "approved") {
-    return html(queueMessage("Only an approved request can receive a new video link."), 400);
+    return html(queueMessage(request, "Only an approved request can receive a new video link."), 400);
   }
   const result = await deliverApprovalEmail(env, id, { reissue: true });
   if (!result.sent) {
     const message = result.reason === "not-claimed"
       ? "A send is already in progress."
       : (result.error || "The new link was not sent.");
-    return html(queueMessage(message), result.reason === "not-claimed" ? 409 : 400);
+    return html(queueMessage(request, message), result.reason === "not-claimed" ? 409 : 400);
   }
-  const back = STATUSES.includes(String(body.return_status || "")) ? `?status=${body.return_status}` : "";
   return new Response(null, {
     status: 303,
-    headers: baseHeaders({ Location: `/admin${back}` }),
+    headers: baseHeaders({ Location: queueLocation(request, body.return_status) }),
   });
 }
 
 async function sendApproval(request, env, id) {
   const session = await loadSession(request, env);
-  if (!session) return html(loginDocument("Sign in to update a request."), 401);
+  if (!session) return html(loginDocument(request, "Sign in to update a request."), 401);
   if (!UUID_RE.test(id)) return text("Not found", 404);
   const body = await readBodyObject(request);
   if (!timingSafeEqual(String(body.csrf || ""), session.csrf_token)) {
-    return html(queueMessage("The page expired. Reload it and try again."), 403);
+    return html(queueMessage(request, "The page expired. Reload it and try again."), 403);
   }
   if (!approvalEmailEnabled(env)) {
-    return html(queueMessage("Approval email is off."), 400);
+    return html(queueMessage(request, "Approval email is off."), 400);
   }
   await expireStaleApprovalClaims(env);
   const row = await env.DB.prepare(
@@ -239,13 +271,12 @@ async function sendApproval(request, env, id) {
   ).bind(id).first();
   if (!row) return text("Not found", 404);
   if (row.status !== "approved" || row.approval_email_sent_at || row.approval_email_claimed_at || row.approval_email_error) {
-    return html(queueMessage("This request is not waiting for its first approval email."), 400);
+    return html(queueMessage(request, "This request is not waiting for its first approval email."), 400);
   }
   await deliverApprovalEmail(env, id);
-  const back = STATUSES.includes(String(body.return_status || "")) ? `?status=${body.return_status}` : "";
   return new Response(null, {
     status: 303,
-    headers: baseHeaders({ Location: `/admin${back}` }),
+    headers: baseHeaders({ Location: queueLocation(request, body.return_status) }),
   });
 }
 
@@ -356,7 +387,7 @@ function text(message, status) {
   });
 }
 
-function loginDocument(error) {
+function loginDocument(request, error) {
   const alert = error
     ? `<p class="alert" role="alert">${escapeHtml(error)}</p>`
     : "";
@@ -366,7 +397,7 @@ function loginDocument(error) {
       <h1>SPHERE demo requests</h1>
       <p class="note">Sign in to review the queue. The password is not stored in this page.</p>
       ${alert}
-      <form method="post" action="/admin/login">
+      <form method="post" action="${adminRoute(request, "/login")}">
         <label for="password">Password</label>
         <input id="password" name="password" type="password" autocomplete="current-password" required />
         <button type="submit">Sign in</button>
@@ -375,27 +406,27 @@ function loginDocument(error) {
   );
 }
 
-function queueMessage(message) {
-  return layout("Demo requests", `<main><p class="alert" role="alert">${escapeHtml(message)}</p><p><a href="/admin">Back to the queue</a></p></main>`);
+function queueMessage(request, message) {
+  return layout("Demo requests", `<main><p class="alert" role="alert">${escapeHtml(message)}</p><p><a href="${adminRoute(request)}">Back to the queue</a></p></main>`);
 }
 
-function queueDocument(csrf, filter, counts, rows, emailOn) {
+function queueDocument(request, csrf, filter, counts, rows, emailOn) {
   const filters = ["all", ...STATUSES].map((status) => {
-    const href = status === "all" ? "/admin" : `/admin?status=${status}`;
+    const href = status === "all" ? adminRoute(request) : adminRoute(request, `?status=${status}`);
     const current = status === filter ? ` aria-current="page"` : "";
     const label = status === "all" ? "All" : capitalize(status);
     return `<a href="${href}"${current}>${label} (${counts[status] || 0})</a>`;
   }).join("");
 
   const bodyRows = rows.length
-    ? rows.map((row) => renderRow(row, csrf, filter, emailOn)).join("")
+    ? rows.map((row) => renderRow(request, row, csrf, filter, emailOn)).join("")
     : `<tr><td colspan="8">No demo requests in this view.</td></tr>`;
 
   return layout(
     "Demo requests",
     `<header>
       <h1>SPHERE demo requests</h1>
-      <form method="post" action="/admin/logout"><button type="submit">Sign out</button></form>
+      <form method="post" action="${adminRoute(request, "/logout")}"><button type="submit">Sign out</button></form>
     </header>
     <main>
       <p class="note">${emailOn ? "Approving emails the requester the demo video link." : "Approval email is off."}</p>
@@ -446,14 +477,14 @@ function appendDetail(items, label, value) {
   items.push([label, text]);
 }
 
-function renderRow(row, csrf, filter, emailOn) {
+function renderRow(request, row, csrf, filter, emailOn) {
   const details = requestDetailItems(row)
     .map(([label, value]) => `<div><dt>${escapeHtml(label)}</dt><dd>${escapeHtml(value || "—")}</dd></div>`)
     .join("");
 
   const actions = STATUSES.map((status) => {
     if (status === row.status) return "";
-    return `<form method="post" action="/admin/requests/${escapeHtml(row.id)}">
+    return `<form method="post" action="${adminRoute(request, `/requests/${escapeHtml(row.id)}`)}">
       <input type="hidden" name="csrf" value="${escapeHtml(csrf)}" />
       <input type="hidden" name="status" value="${status}" />
       <input type="hidden" name="return_status" value="${escapeHtml(filter === "all" ? "" : filter)}" />
@@ -468,7 +499,7 @@ function renderRow(row, csrf, filter, emailOn) {
     <td>${escapeHtml(row.work_email)}</td>
     <td>${escapeHtml(row.phone)}</td>
     <td>${escapeHtml(row.status)}</td>
-    <td>${emailCell(row, csrf, filter, emailOn)}</td>
+    <td>${emailCell(request, row, csrf, filter, emailOn)}</td>
     <td class="actions">
       ${actions}
       <details><summary>Details</summary><dl>${details}</dl></details>
@@ -485,26 +516,26 @@ function emailStatus(row) {
   return { detail: "Not sent", failed: false };
 }
 
-function emailCell(row, csrf, filter, emailOn) {
+function emailCell(request, row, csrf, filter, emailOn) {
   const status = emailStatus(row);
   const back = escapeHtml(filter === "all" ? "" : filter);
   const token = escapeHtml(csrf);
   const resend = emailOn && row.status === "approved" && status.failed
-    ? `<form method="post" action="/admin/requests/${escapeHtml(row.id)}/resend">
+    ? `<form method="post" action="${adminRoute(request, `/requests/${escapeHtml(row.id)}/resend`)}">
         <input type="hidden" name="csrf" value="${token}" />
         <input type="hidden" name="return_status" value="${back}" />
         <button type="submit">Resend email</button>
       </form>`
     : "";
   const send = emailOn && row.status === "approved" && !row.approval_email_sent_at && !row.approval_email_claimed_at && !row.approval_email_error
-    ? `<form method="post" action="/admin/requests/${escapeHtml(row.id)}/send">
+    ? `<form method="post" action="${adminRoute(request, `/requests/${escapeHtml(row.id)}/send`)}">
         <input type="hidden" name="csrf" value="${token}" />
         <input type="hidden" name="return_status" value="${back}" />
         <button type="submit">Send email</button>
       </form>`
     : "";
   const renew = emailOn && row.status === "approved" && row.approval_email_sent_at && !row.approval_email_claimed_at
-    ? `<form method="post" action="/admin/requests/${escapeHtml(row.id)}/new-link">
+    ? `<form method="post" action="${adminRoute(request, `/requests/${escapeHtml(row.id)}/new-link`)}">
         <input type="hidden" name="csrf" value="${token}" />
         <input type="hidden" name="return_status" value="${back}" />
         <button type="submit">Send new link</button>

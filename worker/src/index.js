@@ -1,4 +1,4 @@
-import { handleAdmin } from "./admin.js";
+import { ADMIN_HOST, handleAdmin } from "./admin.js";
 import { corsHeaders, isAllowedOrigin } from "./cors.js";
 import { maybeNotify } from "./email.js";
 import { baseHeaders, clientIp, json, readJson } from "./http.js";
@@ -17,20 +17,35 @@ export default {
 export async function handleRequest(request, env) {
   const url = new URL(request.url);
   if (url.hostname === "video.spheresce.com") return handleVideo(request, env);
+  if (url.hostname === ADMIN_HOST) return handleAdminHost(request, env);
   try {
-    if (url.pathname === "/api/demo-requests") return await handleDemo(request, env);
-    if (url.pathname === "/admin" || url.pathname.startsWith("/admin/")) return await handleAdmin(request, env);
-    if (url.pathname === "/" && request.method === "GET") {
-      return json({ ok: true, service: "sphere-demo-requests" });
-    }
-    return new Response("Not found", {
-      status: 404,
-      headers: baseHeaders({ "Content-Type": "text/plain; charset=utf-8" }),
-    });
+    return await handlePublic(request, env);
   } catch (err) {
     console.error("request failed", err && err.message);
     return json({ ok: false, error: RETRY }, 500);
   }
+}
+
+async function handleAdminHost(request, env) {
+  try {
+    return await handleAdmin(request, env);
+  } catch (err) {
+    console.error("request failed", err && err.message);
+    return json({ ok: false, error: RETRY }, 500);
+  }
+}
+
+async function handlePublic(request, env) {
+  const url = new URL(request.url);
+  if (url.pathname === "/api/demo-requests") return await handleDemo(request, env);
+  if (url.pathname === "/admin" || url.pathname.startsWith("/admin/")) return await handleAdmin(request, env);
+  if (url.pathname === "/" && request.method === "GET") {
+    return json({ ok: true, service: "sphere-demo-requests" });
+  }
+  return new Response("Not found", {
+    status: 404,
+    headers: baseHeaders({ "Content-Type": "text/plain; charset=utf-8" }),
+  });
 }
 
 async function handleDemo(request, env) {
