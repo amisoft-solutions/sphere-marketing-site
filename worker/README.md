@@ -110,7 +110,7 @@ Sign-in compares the submitted password with the `ADMIN_PASSWORD` secret. The Wo
 
 `video.spheresce.com` is served by this same Worker. Requests are chosen by hostname. The public API stays on the workers.dev host. `/admin` remains there as a fallback. The video host does not serve `/admin` or `/api`.
 
-Each approval email contains a personal link, `https://video.spheresce.com/v/<token>`. The token is an HMAC of the request id and an expiry. `VIDEO_LINK_TTL_DAYS` defaults to 7, and the email states that number of days. A link that was already issued keeps the expiry it was signed with. The current expiry is stored on the request. Rejecting the request, or sending a new link, stops the previous link. The player reads `SPHERE_Executive_Overview.mp4` from R2 and converts `SPHERE_Executive_Overview.srt` to WebVTT when the captions are requested. A `.vtt` object is not stored. The player does not offer a download control. The `/video` response uses `Content-Disposition: inline`. A browser that opens that URL directly is sent back to the player page. Playback and range requests are unchanged.
+Each approval email contains a personal link, `https://video.spheresce.com/v/<token>`. The token is an HMAC of the request id and an expiry. `VIDEO_LINK_TTL_DAYS` defaults to 7, and the email states the UTC date of that expiry. A link that was already issued keeps the expiry it was signed with. The current expiry is stored on the request. Rejecting the request, or sending a new link, stops the previous link. The player reads `SPHERE_Executive_Overview.mp4` from R2 and converts `SPHERE_Executive_Overview.srt` to WebVTT when the captions are requested. A `.vtt` object is not stored. The player does not offer a download control. The `/video` response uses `Content-Disposition: inline`. A browser that opens that URL directly is sent back to the player page. Playback and range requests are unchanged.
 
 Before `npx wrangler deploy` for this host:
 
@@ -139,7 +139,7 @@ When an admin marks a request approved, the Worker can email that person the dem
 
 The message is sent with the `SEND_EMAIL` binding. Recipients are not restricted. `allowed_sender_addresses` is only `no-reply@spheresce.com`, so the from address cannot drift. Sending to arbitrary recipients requires the Workers Paid plan. The Workers Free plan can send only to verified destination addresses.
 
-`EMAIL_FROM` is `Logic Pursuits Representative <no-reply@spheresce.com>`. `VIDEO_URL` is `https://video.spheresce.com`. The message greets the person by name, says a Logic Pursuits Representative approved the demo request, includes that video link, and signs off as Logic Pursuits Representative. It does not set a response address.
+`EMAIL_FROM` is `Logic Pursuits <no-reply@spheresce.com>`. `VIDEO_URL` is `https://video.spheresce.com`. The message greets the person by name, gives a personal overview link, states the UTC expiry date, and says someone from Logic Pursuits will be in touch to schedule a live demo. It signs off as Logic Pursuits and does not set a response address.
 
 Onboard spheresce.com before turning the flag on:
 
@@ -172,7 +172,7 @@ Use this only when some other domain is already on Cloudflare Email Routing (MX 
 
 - The `send_email` binding is already present for approval mail. Do not add a destination allowlist to it.
 - Set var `EMAIL_PROVIDER` to `cloudflare_email`.
-- `EMAIL_FROM` is already Logic Pursuits Representative at no-reply@spheresce.com. Point admin alerts at a different verified sender only if you turn this path on.
+- `EMAIL_FROM` is already Logic Pursuits at no-reply@spheresce.com. Point admin alerts at a different verified sender only if you turn this path on.
 - Set secret `NOTIFY_TO` to the inbox that should receive the alert. Email Routing may require that destination to be verified.
 - Set var `NOTIFY_EMAIL_ENABLED` to `true` and redeploy.
 

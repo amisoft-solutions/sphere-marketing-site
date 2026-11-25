@@ -2,11 +2,11 @@ import assert from "node:assert/strict";
 import { readFileSync } from "node:fs";
 import test from "node:test";
 import { deliverApprovalEmail, expireStaleApprovalClaims } from "../src/admin.js";
-import { renderApprovalEmail, sendApprovalEmail, videoLinkTtlDays } from "../src/email.js";
+import { formatVideoExpiry, renderApprovalEmail, sendApprovalEmail, videoLinkTtlDays } from "../src/email.js";
 import worker from "../src/index.js";
 import { countRequests, createDb, makeEnv, payload } from "./helpers.js";
 
-const FROM = "Logic Pursuits Representative <no-reply@spheresce.com>";
+const FROM = "Logic Pursuits <no-reply@spheresce.com>";
 const VIDEO = "https://video.spheresce.com";
 
 function mailEnv(db, overrides = {}) {
@@ -25,6 +25,31 @@ function mailEnv(db, overrides = {}) {
   });
   env.sends = sends;
   return env;
+}
+
+function expiryMillisFromLink(link) {
+  const token = String(link).split("/v/")[1];
+  const payload = Buffer.from(token.split(".")[0], "base64url").toString("utf8");
+  return Number(payload.slice(payload.lastIndexOf(".") + 1)) * 1000;
+}
+
+function proseWithoutLinks(value) {
+  return String(value)
+    .replace(/<[^>]+>/g, " ")
+    .replace(/&lt;/g, "<")
+    .replace(/&gt;/g, ">")
+    .replace(/&amp;/g, "&")
+    .replace(/&quot;/g, "\"")
+    .replace(/&#39;/g, "'")
+    .replace(/https?:\/\/\S+/g, "");
+}
+
+function assertNoBannedPunctuation(value) {
+  const prose = proseWithoutLinks(value);
+  assert.equal(prose.includes(":"), false, prose);
+  assert.equal(prose.includes(";"), false, prose);
+  assert.equal(prose.includes("\u2014"), false, prose);
+  assert.equal(/\bLP\b/.test(prose), false);
 }
 
 async function postDemo(env, body, ip) {
@@ -87,20 +112,27 @@ test("approving sends the video link once, and approving again does not", async 
   assert.equal(approved.status, 303);
   assert.equal(env.sends.length, 1);
   assert.equal(env.sends[0].to, "jordan.lee@northwindbio.example");
-  assert.deepEqual(env.sends[0].from, { name: "Logic Pursuits Representative", email: "no-reply@spheresce.com" });
+  assert.deepEqual(env.sends[0].from, { name: "Logic Pursuits", email: "no-reply@spheresce.com" });
   assert.equal(env.sends[0].replyTo, undefined);
-  assert.match(env.sends[0].text, /Hello Jordan Lee,/);
-  assert.match(env.sends[0].text, /https:\/\/video\.spheresce\.com\/v\/[A-Za-z0-9_-]+\.[A-Za-z0-9_-]+/);
-  assert.match(env.sends[0].text, /This link expires in 7 days/);
-  assert.match(env.sends[0].html, /This link expires in 7 days/);
+  assert.equal(env.sends[0].subject, "Your SPHERE demo");
+  assert.match(env.sends[0].text, /^Hello Jordan Lee,\n/);
+  const link = env.sends[0].text.match(/https:\/\/video\.spheresce\.com\/v\/[A-Za-z0-9_-]+\.[A-Za-z0-9_-]+/)[0];
+  assert.match(env.sends[0].text, /Here is a quick overview video to help you get started\.\nhttps:\/\/video\.spheresce\.com\/v\//);
   const sentExpiry = Date.parse(db.prepare("SELECT video_link_expires_at FROM demo_requests WHERE id = ?").get(id).video_link_expires_at);
   const remainingDays = (sentExpiry - Date.now()) / 86400000;
   assert.ok(remainingDays > 6.9 && remainingDays < 7.1);
-  assert.match(env.sends[0].text, /A Logic Pursuits Representative approved your demo request/);
-  assert.match(env.sends[0].text, /\nLogic Pursuits Representative$/);
+  const expiryLabel = formatVideoExpiry(expiryMillisFromLink(link));
+  assert.equal(formatVideoExpiry(sentExpiry), expiryLabel);
+  assert.match(env.sends[0].text, new RegExp(`This link is just for you and expires on ${expiryLabel.replace(/\./g, "\\.")}\\.`));
+  assert.match(env.sends[0].html, new RegExp(`This link is just for you and expires on ${expiryLabel.replace(/\./g, "\\.")}\\.`));
+  assert.match(env.sends[0].text, /Someone from Logic Pursuits will contact you soon to schedule a live demo\./);
+  assert.match(env.sends[0].html, /Someone from Logic Pursuits will contact you soon to schedule a live demo\./);
+  assert.match(env.sends[0].text, /\nThanks,\nLogic Pursuits$/);
+  assert.match(env.sends[0].html, /<p>Thanks,<\/p><p>Logic Pursuits<\/p>$/);
   assert.equal(env.sends[0].text.includes("The SPHERE team approved"), false);
-  assert.match(env.sends[0].html, /A Logic Pursuits Representative approved your demo request/);
   assert.equal(env.sends[0].html.includes("The SPHERE team approved"), false);
+  assertNoBannedPunctuation(env.sends[0].text);
+  assertNoBannedPunctuation(env.sends[0].html);
   const row = db.prepare("SELECT approval_email_sent_at, approval_email_claimed_at, approval_email_error FROM demo_requests WHERE id = ?").get(id);
   assert.ok(row.approval_email_sent_at);
   assert.equal(row.approval_email_claimed_at, null);
@@ -227,6 +259,7 @@ test("rejected and pending requests are not emailed", async () => {
 });
 
 test("approval email wording stays the same when removed fields are null", () => {
+  const expiresAt = "2026-12-02T15:04:00.000Z";
   const rendered = renderApprovalEmail(
     {
       full_name: "Jordan Lee",
@@ -237,24 +270,27 @@ test("approval email wording stays the same when removed fields are null", () =>
       consent_to_contact: null,
     },
     `${VIDEO}/v/example.token`,
-    7
+    expiresAt
   );
   assert.equal(
     rendered.text,
     [
       "Hello Jordan Lee,",
       "",
-      "A Logic Pursuits Representative approved your demo request. You can watch the demo here.",
+      "Here is a quick overview video to help you get started.",
       `${VIDEO}/v/example.token`,
       "",
-      "This link expires in 7 days.",
+      "This link is just for you and expires on December 2, 2026 UTC.",
       "",
-      "Logic Pursuits Representative",
+      "Someone from Logic Pursuits will contact you soon to schedule a live demo.",
+      "",
+      "Thanks,",
+      "Logic Pursuits",
     ].join("\n")
   );
   assert.match(rendered.html, /<p>Hello Jordan Lee,<\/p>/);
-  assert.match(rendered.html, /<p>A Logic Pursuits Representative approved your demo request\. You can watch the demo here\.<\/p>/);
-  assert.match(rendered.html, /<p>Logic Pursuits Representative<\/p>/);
+  assert.match(rendered.html, /<p>Here is a quick overview video to help you get started\.<\/p>/);
+  assert.match(rendered.html, /<p>Logic Pursuits<\/p>/);
   assert.equal(rendered.text.includes("null"), false);
   assert.equal(rendered.html.includes("null"), false);
   assert.equal(rendered.text.includes("undefined"), false);
@@ -266,24 +302,39 @@ test("a missing video link lifetime defaults to 7 days", () => {
   assert.equal(videoLinkTtlDays({ VIDEO_LINK_TTL_DAYS: "0" }), 7);
   assert.equal(videoLinkTtlDays({ VIDEO_LINK_TTL_DAYS: "nope" }), 7);
   assert.equal(videoLinkTtlDays({ VIDEO_LINK_TTL_DAYS: "7" }), 7);
-  const rendered = renderApprovalEmail({ full_name: "Jordan Lee" }, `${VIDEO}/v/example.token`);
-  assert.match(rendered.text, /This link expires in 7 days\./);
-  assert.match(rendered.html, /This link expires in 7 days\./);
+  const rendered = renderApprovalEmail({ full_name: "Jordan Lee" }, `${VIDEO}/v/example.token`, "2026-12-02T15:04:00.000Z");
+  assert.match(rendered.text, /This link is just for you and expires on December 2, 2026 UTC\./);
+  assert.match(rendered.html, /This link is just for you and expires on December 2, 2026 UTC\./);
   assert.match(readFileSync(new URL("../wrangler.toml", import.meta.url), "utf8"), /VIDEO_LINK_TTL_DAYS = "7"/);
 });
 
 test("approval HTML escapes the name and does not use a response address", async () => {
   const name = `Ann <script> & "quotes"`;
-  const rendered = renderApprovalEmail({ full_name: name }, `${VIDEO}/v/example.token`, 14);
+  const expiresAt = "2026-12-02T15:04:00.000Z";
+  const rendered = renderApprovalEmail({ full_name: name }, `${VIDEO}/v/example.token`, expiresAt);
+  assert.equal(rendered.subject, "Your SPHERE demo");
   assert.match(rendered.html, /Ann &lt;script&gt; &amp; &quot;quotes&quot;/);
   assert.equal(rendered.html.includes("<script>"), false);
   assert.match(rendered.text, /Hello Ann <script> & "quotes",/);
-  assert.match(rendered.text, /A Logic Pursuits Representative approved your demo request/);
-  assert.match(rendered.html, /<p>A Logic Pursuits Representative approved your demo request\. You can watch the demo here\.<\/p>/);
-  assert.match(rendered.text, /\nLogic Pursuits Representative$/);
-  assert.match(rendered.html, /<p>Logic Pursuits Representative<\/p>/);
+  assert.match(rendered.text, /Here is a quick overview video to help you get started\.\n/);
+  assert.match(rendered.html, /<p>Here is a quick overview video to help you get started\.<\/p>/);
+  assert.match(rendered.text, /Someone from Logic Pursuits will contact you soon to schedule a live demo\./);
+  assert.match(rendered.html, /<p>Someone from Logic Pursuits will contact you soon to schedule a live demo\.<\/p>/);
+  assert.match(rendered.text, /\nThanks,\nLogic Pursuits$/);
+  assert.match(rendered.html, /<p>Thanks,<\/p><p>Logic Pursuits<\/p>$/);
   assert.equal(rendered.text.includes("The SPHERE team approved"), false);
   assert.equal(rendered.html.includes("The SPHERE team approved"), false);
+  assert.equal(formatVideoExpiry(expiresAt), "December 2, 2026 UTC");
+  assert.match(rendered.text, /expires on December 2, 2026 UTC\./);
+  assertNoBannedPunctuation(rendered.text);
+  assertNoBannedPunctuation(rendered.html);
+
+  const blank = renderApprovalEmail({ full_name: "  " }, `${VIDEO}/v/example.token`, expiresAt);
+  assert.match(blank.text, /^Hello,\n/);
+  assert.equal(blank.text.includes("Hello ,"), false);
+  assert.match(blank.html, /<p>Hello,<\/p>/);
+  assertNoBannedPunctuation(blank.text);
+  assertNoBannedPunctuation(blank.html);
 
   const db = createDb();
   const env = mailEnv(db);

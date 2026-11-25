@@ -151,28 +151,52 @@ export async function createVideoLink(env, requestId, now = Date.now(), notBefor
   };
 }
 
-export function renderApprovalEmail(row, link, ttlDays) {
-  const name = String(row.full_name || row.fullName || "").trim();
+export function formatVideoExpiry(value) {
+  let millis = NaN;
+  if (value instanceof Date) millis = value.getTime();
+  else if (typeof value === "number") millis = value < 1e12 ? value * 1000 : value;
+  else if (typeof value === "string" && value.trim()) millis = Date.parse(value);
+  if (!Number.isFinite(millis)) return "";
+  const formatted = new Intl.DateTimeFormat("en-US", {
+    timeZone: "UTC",
+    month: "long",
+    day: "numeric",
+    year: "numeric",
+  }).format(new Date(millis));
+  return `${formatted} UTC`;
+}
+
+export function renderApprovalEmail(row, link, expiresAt) {
+  const name = String((row && (row.full_name || row.fullName)) || "").trim();
   const url = String(link || "").trim();
-  const days = Number(ttlDays) || 7;
+  const expiry = formatVideoExpiry(expiresAt);
+  const greeting = name ? `Hello ${name},` : "Hello,";
+  const expiryLine = expiry
+    ? `This link is just for you and expires on ${expiry}.`
+    : "This link is just for you.";
   const text = [
-    `Hello ${name},`,
+    greeting,
     "",
-    "A Logic Pursuits Representative approved your demo request. You can watch the demo here.",
+    "Here is a quick overview video to help you get started.",
     url,
     "",
-    `This link expires in ${days} days.`,
+    expiryLine,
     "",
-    "Logic Pursuits Representative",
+    "Someone from Logic Pursuits will contact you soon to schedule a live demo.",
+    "",
+    "Thanks,",
+    "Logic Pursuits",
   ].join("\n");
-  const safeName = escapeHtml(name);
+  const safeGreeting = name ? `Hello ${escapeHtml(name)},` : "Hello,";
   const safeUrl = escapeHtml(url);
   const html = [
-    `<p>Hello ${safeName},</p>`,
-    "<p>A Logic Pursuits Representative approved your demo request. You can watch the demo here.</p>",
+    `<p>${safeGreeting}</p>`,
+    "<p>Here is a quick overview video to help you get started.</p>",
     `<p><a href="${safeUrl}">${safeUrl}</a></p>`,
-    `<p>This link expires in ${days} days.</p>`,
-    "<p>Logic Pursuits Representative</p>",
+    `<p>${escapeHtml(expiryLine)}</p>`,
+    "<p>Someone from Logic Pursuits will contact you soon to schedule a live demo.</p>",
+    "<p>Thanks,</p>",
+    "<p>Logic Pursuits</p>",
   ].join("");
   return { subject: "Your SPHERE demo", text, html };
 }
@@ -189,7 +213,7 @@ export async function sendApprovalEmail(env, row) {
   const natural = Math.floor(Date.now() / 1000) + videoLinkTtlDays(env) * 86400;
   const notBefore = row && row.approval_email_sent_at ? Math.max(previous, natural) : previous;
   const videoLink = await createVideoLink(env, row.id || row.requestId, Date.now(), notBefore);
-  const message = renderApprovalEmail(row, videoLink.link, videoLink.days);
+  const message = renderApprovalEmail(row, videoLink.link, videoLink.expiresAt);
   await env.SEND_EMAIL.send({
     to,
     from: parseFromAddress(fromRaw),
