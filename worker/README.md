@@ -101,9 +101,9 @@ Each approval email contains a personal link, `https://video.spheresce.com/v/<to
 Before `npx wrangler deploy` for this host:
 
 ```bash
-npx wrangler r2 bucket create sphere-video
-npx wrangler r2 object put sphere-video/SPHERE_Executive_Overview.mp4 --file ./SPHERE_Executive_Overview.mp4 --content-type video/mp4
-npx wrangler r2 object put sphere-video/SPHERE_Executive_Overview.srt --file ./SPHERE_Executive_Overview.srt --content-type text/plain
+npx wrangler r2 bucket create sphere-video-overview
+npx wrangler r2 object put sphere-video-overview/SPHERE_Executive_Overview.mp4 --file ./SPHERE_Executive_Overview.mp4 --content-type video/mp4
+npx wrangler r2 object put sphere-video-overview/SPHERE_Executive_Overview.srt --file ./SPHERE_Executive_Overview.srt --content-type text/plain
 npx wrangler secret put VIDEO_LINK_SECRET
 npx wrangler d1 migrations apply sphere-demo-requests --remote
 ```

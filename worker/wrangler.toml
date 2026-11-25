@@ -54,4 +54,4 @@ custom_domain = true
 
 [[r2_buckets]]
 binding = "VIDEO_BUCKET"
-bucket_name = "sphere-video"
+bucket_name = "sphere-video-overview"
