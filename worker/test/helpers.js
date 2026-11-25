@@ -3,7 +3,7 @@ import { DatabaseSync } from "node:sqlite";
 
 export function createDb() {
   const db = new DatabaseSync(":memory:");
-  for (const file of ["0001_init.sql", "0002_approval_email.sql", "0003_video_link.sql"]) {
+  for (const file of ["0001_init.sql", "0002_approval_email.sql", "0003_video_link.sql", "0004_consent_nullable.sql"]) {
     db.exec(readFileSync(new URL(`../migrations/${file}`, import.meta.url), "utf8"));
   }
   return db;

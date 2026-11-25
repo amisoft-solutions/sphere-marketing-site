@@ -205,7 +205,7 @@ test("a failed send can be resent, and a bad token cannot", async () => {
     env
   );
   const html = await page.text();
-  assert.match(html, /Failed: mailbox unavailable/);
+  assert.match(html, /Failed - mailbox unavailable/);
   assert.match(html, /Resend email/);
   assert.match(html, /Approving emails the requester the demo video link/);
 

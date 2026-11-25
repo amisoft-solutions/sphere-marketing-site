@@ -83,15 +83,18 @@ test("the contact section keeps its copy and replaces the mailto with the form",
   assert.equal(existsSync(new URL("worker/src/validate.js", root)), false);
 });
 
-test("demo request migrations do not drop columns or rebuild the table", () => {
+test("demo request migrations do not drop columns", () => {
   const names = readdirSync(new URL("worker/migrations/", root));
   assert.ok(names.includes("0001_init.sql"));
-  assert.equal(names.some((name) => /0004/.test(name)), false);
+  assert.ok(names.includes("0004_consent_nullable.sql"));
   for (const name of names) {
     const sql = read(`worker/migrations/${name}`);
     assert.equal(/drop\s+column/i.test(sql), false, name);
-    assert.equal(/drop\s+table/i.test(sql), false, name);
+    if (name !== "0004_consent_nullable.sql") assert.equal(/drop\s+table/i.test(sql), false, name);
   }
+  const consent = read("worker/migrations/0004_consent_nullable.sql");
+  assert.match(consent, /consent_to_contact INTEGER CHECK \(consent_to_contact IN \(0, 1\)\)/);
+  assert.match(consent, /INSERT INTO demo_requests_consent/);
 });
 
 test("worker config keeps email off and localhost closed", () => {

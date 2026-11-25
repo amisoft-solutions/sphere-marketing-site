@@ -479,7 +479,7 @@ function appendDetail(items, label, value) {
 
 function renderRow(request, row, csrf, filter, emailOn) {
   const details = requestDetailItems(row)
-    .map(([label, value]) => `<div><dt>${escapeHtml(label)}</dt><dd>${escapeHtml(value || "—")}</dd></div>`)
+    .map(([label, value]) => `<div><dt>${escapeHtml(label)}</dt><dd>${escapeHtml(value || "-")}</dd></div>`)
     .join("");
 
   const actions = STATUSES.map((status) => {
@@ -509,7 +509,7 @@ function renderRow(request, row, csrf, filter, emailOn) {
 
 function emailStatus(row) {
   if (row.approval_email_claimed_at) return { detail: "Sending", failed: false };
-  if (row.approval_email_error) return { detail: `Failed: ${row.approval_email_error}`, failed: true };
+  if (row.approval_email_error) return { detail: `Failed - ${row.approval_email_error}`, failed: true };
   if (row.approval_email_sent_at) {
     return { detail: `Sent ${formatWhen(row.approval_email_sent_at)}`, failed: false };
   }

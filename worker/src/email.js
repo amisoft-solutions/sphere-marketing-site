@@ -14,41 +14,52 @@ export function notificationsEnabled(env) {
   return String(env && env.NOTIFY_EMAIL_ENABLED != null ? env.NOTIFY_EMAIL_ENABLED : "false").toLowerCase() === "true";
 }
 
+function labeled(label, value) {
+  const text = value == null ? "" : String(value).trim();
+  return text ? `${label} - ${text}` : `${label} -`;
+}
+
 export function renderAdminNotification(record, adminUrl) {
   const lines = [
     "A new SPHERE demo request is waiting for review.",
     "",
-    `Name: ${record.fullName}`,
-    `Job title: ${record.jobTitle}`,
-    `Organization: ${record.organization}`,
-    `Work email: ${record.workEmail}`,
-    `Phone: ${record.phone}`,
+    labeled("Name", record.fullName),
+    labeled("Job title", record.jobTitle),
+    labeled("Organization", record.organization),
+    labeled("Work email", record.workEmail),
+    labeled("Phone", record.phone),
   ];
   appendFilled(lines, "Country or region", record.country);
   appendFilled(lines, "Organization type", record.organizationType);
   appendFilled(lines, "Interested in", record.interest);
   appendFilled(lines, "Heard about SPHERE", record.heardAbout);
-  if (record.consentToContact != null && record.consentToContact !== "") {
-    lines.push(`Consent to be contacted: ${record.consentToContact ? "yes" : "no"}`);
-  }
+  const consent = consentAnswer(record);
+  if (consent) lines.push(labeled("Consent to be contacted", consent));
   lines.push(
-    `Request type: ${record.requestType}`,
-    `Status: ${record.status}`,
-    `Submitted: ${record.createdAt}`,
+    labeled("Request type", record.requestType),
+    labeled("Status", record.status),
+    labeled("Submitted", record.createdAt),
     "",
     "The requester is not emailed by this system.",
   );
   if (adminUrl) {
-    lines.push("", `Review the queue: ${adminUrl}`);
+    lines.push("", `Review the queue. ${adminUrl}`);
   }
   return lines.join("\n");
+}
+
+function consentAnswer(record) {
+  if (!record) return "";
+  const value = Object.hasOwn(record, "consentToContact") ? record.consentToContact : record.consent_to_contact;
+  if (value == null || value === "") return "";
+  return value ? "yes" : "no";
 }
 
 function appendFilled(lines, label, value) {
   if (value == null) return;
   const text = String(value).trim();
   if (!text) return;
-  lines.push(`${label}: ${text}`);
+  lines.push(labeled(label, text));
 }
 
 export async function maybeNotify(env, record, options = {}) {

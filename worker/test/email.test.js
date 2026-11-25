@@ -21,12 +21,13 @@ const record = {
 
 test("notification text is an admin alert and not a demo delivery", () => {
   const text = renderAdminNotification(record, "https://worker.test/admin");
-  assert.match(text, /Jordan Lee/);
-  assert.match(text, /Organization type: CRO/);
-  assert.match(text, /Interested in: Tracker walkthrough/);
-  assert.match(text, /Heard about SPHERE: Conference/);
-  assert.match(text, /Consent to be contacted: yes/);
+  assert.match(text, /Name - Jordan Lee/);
   assert.equal(text.includes("Country or region"), false);
+  assert.match(text, /Organization type - CRO/);
+  assert.match(text, /Interested in - Tracker walkthrough/);
+  assert.match(text, /Heard about SPHERE - Conference/);
+  assert.match(text, /Consent to be contacted - yes/);
+  assert.match(text, /Review the queue\. https:\/\/worker\.test\/admin/);
   assert.match(text, /not emailed/i);
   assert.doesNotMatch(text, /video/i);
   assert.doesNotMatch(text, /\.mp4|youtu|watch the demo/i);
@@ -45,13 +46,25 @@ test("notification text omits removed fields when they are missing", () => {
     "https://worker.test/admin"
   );
   assert.match(text, /Jordan Lee/);
-  assert.match(text, /Phone: \+1 202 555 0143/);
+  assert.match(text, /Phone - \+1 202 555 0143/);
   for (const label of ["Country or region", "Organization type", "Interested in", "Heard about SPHERE", "Consent to be contacted"]) {
     assert.equal(text.includes(label), false, label);
   }
   assert.equal(text.includes("null"), false);
   assert.equal(text.includes("undefined"), false);
   assert.equal(text.includes("—"), false);
+});
+
+test("notification consent line uses a hyphen only when an answer was stored", () => {
+  const without = { ...record };
+  delete without.consentToContact;
+  assert.equal(renderAdminNotification(without).includes("Consent to be contacted"), false);
+  assert.equal(renderAdminNotification({ ...record, consentToContact: null }).includes("Consent to be contacted"), false);
+  assert.match(renderAdminNotification({ ...record, consentToContact: 1 }), /Consent to be contacted - yes/);
+  assert.match(renderAdminNotification({ ...record, consentToContact: 0 }), /Consent to be contacted - no/);
+  assert.match(renderAdminNotification({ consent_to_contact: 1, fullName: "Jordan Lee" }), /Consent to be contacted - yes/);
+  assert.match(renderAdminNotification({ consent_to_contact: 0, fullName: "Jordan Lee" }), /Consent to be contacted - no/);
+  assert.equal(renderAdminNotification({ consent_to_contact: null, fullName: "Jordan Lee" }).includes("Consent to be contacted"), false);
 });
 
 test("does not send mail while the feature flag is off", async () => {

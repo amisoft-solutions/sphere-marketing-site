@@ -69,7 +69,7 @@ The local API is `http://127.0.0.1:8787/api/demo-requests`. Point a local copy o
    npx wrangler d1 migrations apply sphere-demo-requests --remote
    ```
 
-   That applies `migrations/0001_init.sql`, `migrations/0002_approval_email.sql`, and `migrations/0003_video_link.sql`.
+   That applies `migrations/0001_init.sql`, `migrations/0002_approval_email.sql`, `migrations/0003_video_link.sql`, and `migrations/0004_consent_nullable.sql`.
 
 5. Set secrets. Wrangler prompts for the value so it is not stored in the shell history as an argument if you paste it at the prompt:
 
@@ -211,6 +211,7 @@ Approval mail uses Email Sending on spheresce.com, which is the `cf-bounce` reco
 | `migrations/0001_init.sql` | D1 schema |
 | `migrations/0002_approval_email.sql` | Approval email columns |
 | `migrations/0003_video_link.sql` | Current video-link expiry |
+| `migrations/0004_consent_nullable.sql` | Lets a missing consent answer be NULL |
 | `src/video.js` | Player, video stream, and captions on the video host |
 | `wrangler.toml` | Bindings and placeholders |
 
@@ -218,4 +219,4 @@ Approval mail uses Email Sending on spheresce.com, which is the `cf-bounce` reco
 
 JSON fields are `requestType` (`Demo request`), `fullName`, `jobTitle`, `organization`, `workEmail`, `phone`, `faxNumber` (honeypot, must be empty), and `formLoadedAt` (millisecond timestamp from when the form was shown).
 
-`country`, `organization_type`, `interest`, `heard_about`, and `consent_to_contact` stay in D1. New rows leave them at the existing defaults, blank text and 0. This change does not add a migration, drop a column, or rebuild the table. Older rows keep whatever those columns already stored. The admin queue and the approval email still render when those values are missing or null.
+`country`, `organization_type`, `interest`, and `heard_about` stay in D1. New rows leave those text columns at the existing blank default. `consent_to_contact` also stays. A new request that does not send it stores NULL, written explicitly in the insert. `migrations/0004_consent_nullable.sql` allows that NULL and copies existing 0 and 1 values unchanged. The admin queue and the notification omit a null consent answer. A stored 1 still reads as Yes, and a stored 0 still reads as No.
