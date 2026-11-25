@@ -91,7 +91,11 @@ test("approving sends the video link once, and approving again does not", async 
   assert.match(env.sends[0].text, /Hello Jordan Lee,/);
   assert.match(env.sends[0].text, /https:\/\/video\.spheresce\.com\/v\/[A-Za-z0-9_-]+\.[A-Za-z0-9_-]+/);
   assert.match(env.sends[0].text, /This link expires in 14 days/);
-  assert.match(env.sends[0].text, /Logic Pursuits Representative/);
+  assert.match(env.sends[0].text, /A Logic Pursuits Representative approved your demo request/);
+  assert.match(env.sends[0].text, /\nLogic Pursuits Representative$/);
+  assert.equal(env.sends[0].text.includes("The SPHERE team approved"), false);
+  assert.match(env.sends[0].html, /A Logic Pursuits Representative approved your demo request/);
+  assert.equal(env.sends[0].html.includes("The SPHERE team approved"), false);
   const row = db.prepare("SELECT approval_email_sent_at, approval_email_claimed_at, approval_email_error FROM demo_requests WHERE id = ?").get(id);
   assert.ok(row.approval_email_sent_at);
   assert.equal(row.approval_email_claimed_at, null);
@@ -223,7 +227,12 @@ test("approval HTML escapes the name and does not use a response address", async
   assert.match(rendered.html, /Ann &lt;script&gt; &amp; &quot;quotes&quot;/);
   assert.equal(rendered.html.includes("<script>"), false);
   assert.match(rendered.text, /Hello Ann <script> & "quotes",/);
-  assert.match(rendered.html, /Logic Pursuits Representative/);
+  assert.match(rendered.text, /A Logic Pursuits Representative approved your demo request/);
+  assert.match(rendered.html, /<p>A Logic Pursuits Representative approved your demo request\. You can watch the demo here:<\/p>/);
+  assert.match(rendered.text, /\nLogic Pursuits Representative$/);
+  assert.match(rendered.html, /<p>Logic Pursuits Representative<\/p>/);
+  assert.equal(rendered.text.includes("The SPHERE team approved"), false);
+  assert.equal(rendered.html.includes("The SPHERE team approved"), false);
 
   const db = createDb();
   const env = mailEnv(db);

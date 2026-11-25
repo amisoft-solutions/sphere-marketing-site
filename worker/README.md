@@ -125,7 +125,7 @@ When an admin marks a request approved, the Worker can email that person the dem
 
 The message is sent with the `SEND_EMAIL` binding. Recipients are not restricted. `allowed_sender_addresses` is only `no-reply@spheresce.com`, so the from address cannot drift. Sending to arbitrary recipients requires the Workers Paid plan. The Workers Free plan can send only to verified destination addresses.
 
-`EMAIL_FROM` is `Logic Pursuits Representative <no-reply@spheresce.com>`. `VIDEO_URL` is `https://video.spheresce.com`. The message greets the person by name, includes that video link, and signs off as Logic Pursuits Representative. It does not set a response address.
+`EMAIL_FROM` is `Logic Pursuits Representative <no-reply@spheresce.com>`. `VIDEO_URL` is `https://video.spheresce.com`. The message greets the person by name, says a Logic Pursuits Representative approved the demo request, includes that video link, and signs off as Logic Pursuits Representative. It does not set a response address.
 
 Onboard spheresce.com before turning the flag on:
 

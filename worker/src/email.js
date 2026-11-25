@@ -142,7 +142,7 @@ export function renderApprovalEmail(row, link, ttlDays) {
   const text = [
     `Hello ${name},`,
     "",
-    "The SPHERE team approved your demo request. You can watch the demo here:",
+    "A Logic Pursuits Representative approved your demo request. You can watch the demo here:",
     url,
     "",
     `This link expires in ${days} days.`,
@@ -153,7 +153,7 @@ export function renderApprovalEmail(row, link, ttlDays) {
   const safeUrl = escapeHtml(url);
   const html = [
     `<p>Hello ${safeName},</p>`,
-    "<p>The SPHERE team approved your demo request. You can watch the demo here:</p>",
+    "<p>A Logic Pursuits Representative approved your demo request. You can watch the demo here:</p>",
     `<p><a href="${safeUrl}">${safeUrl}</a></p>`,
     `<p>This link expires in ${days} days.</p>`,
     "<p>Logic Pursuits Representative</p>",
