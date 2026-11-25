@@ -1,5 +1,6 @@
 # SPHERE demo-request Worker. Stays on a workers.dev hostname.
-# Do not add a route or DNS record for spheresce.com.
+# Do not add a Worker route or custom domain for spheresce.com.
+# Approval mail uses Email Sending DNS, documented in README. The flag stays off until that is done.
 #
 # Replace <d1-database-id> after `npx wrangler d1 create sphere-demo-requests`.
 # Do not put account ids, API tokens, or the admin password in this file.
@@ -30,14 +31,16 @@ ALLOWED_ORIGINS = "https://www.spheresce.com,https://spheresce.com"
 ALLOW_LOCALHOST = "false"
 # Secure session cookie in production. For `wrangler dev` over http, set COOKIE_SECURE=false in .dev.vars.
 COOKIE_SECURE = "true"
-# Admin email is off. The D1 queue works with this left false. See README.
+# Admin notification email stays off. See README.
 NOTIFY_EMAIL_ENABLED = "false"
 EMAIL_PROVIDER = "off"
-# EMAIL_FROM is a var, not a secret. Set it only when email is enabled, to a sender
-# the chosen provider has already verified. Do not use an address on spheresce.com
-# unless that domain is already verified somewhere else.
+# Approval mail to the requester. Leave false until https://video.spheresce.com resolves
+# and spheresce.com is onboarded to Email Sending. The message has no response address.
+APPROVAL_EMAIL_ENABLED = "false"
+EMAIL_FROM = "SPHERE team <no-reply@spheresce.com>"
+VIDEO_URL = "https://video.spheresce.com"
 
-# Uncomment only when sending through a Cloudflare zone that already has Email Routing.
-# That zone must not require new DNS on spheresce.com. Leave this commented while email is off.
-# [[send_email]]
-# name = "SEND_EMAIL"
+# Sends to any requester. Do not restrict recipients on this binding.
+# Arbitrary recipients require Workers Paid.
+[[send_email]]
+name = "SEND_EMAIL"

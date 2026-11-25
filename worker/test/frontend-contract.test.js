@@ -40,7 +40,8 @@ test("customer-facing files do not name other companies or an inbox", () => {
       const pattern = word === banned[2] ? new RegExp(`\\b${word}\\b`, "i") : new RegExp(word, "i");
       assert.equal(pattern.test(text), false, `${path} contains ${word}`);
     }
-    assert.equal(email.test(text), false, `${path} contains an email address`);
+    const allowedFrom = ["no-reply@", "spheresce.com"].join("");
+    assert.equal(email.test(text.split(allowedFrom).join("")), false, `${path} contains an email address`);
     assert.equal(text.includes("mailto:"), false, path);
   }
 });
@@ -78,6 +79,11 @@ test("worker config keeps email off and localhost closed", () => {
   const toml = read("worker/wrangler.toml");
   assert.match(toml, /NOTIFY_EMAIL_ENABLED = "false"/);
   assert.match(toml, /EMAIL_PROVIDER = "off"/);
+  assert.match(toml, /APPROVAL_EMAIL_ENABLED = "false"/);
+  assert.match(toml, /\[\[send_email\]\]/);
+  assert.equal(read("worker/src/email.js").includes("replyTo"), false);
+  assert.equal(toml.includes("allowed_destination_addresses"), false);
+  assert.equal(toml.includes("destination_address"), false);
   assert.match(toml, /ALLOW_LOCALHOST = "false"/);
   assert.match(toml, /database_id = "<d1-database-id>"/);
   assert.match(toml, /https:\/\/www\.spheresce\.com/);

@@ -2,7 +2,12 @@
  * Admin notification email. Off unless NOTIFY_EMAIL_ENABLED is the string "true".
  * The recipient is NOTIFY_TO (Worker secret or var). Never the person who submitted the form.
  * The message never includes a demo video or a viewing link.
+ *
+ * Approval mail is separate. It is off unless APPROVAL_EMAIL_ENABLED is "true".
+ * That message goes to the requester and includes the demo video link.
  */
+
+import { escapeHtml } from "./http.js";
 
 export function notificationsEnabled(env) {
   return String(env && env.NOTIFY_EMAIL_ENABLED != null ? env.NOTIFY_EMAIL_ENABLED : "false").toLowerCase() === "true";
@@ -88,4 +93,62 @@ export async function maybeNotify(env, record, options = {}) {
   }
 
   return { sent: false, reason: "unknown-provider" };
+}
+
+export function approvalEmailEnabled(env) {
+  return String(env && env.APPROVAL_EMAIL_ENABLED != null ? env.APPROVAL_EMAIL_ENABLED : "false").toLowerCase() === "true";
+}
+
+export function parseFromAddress(value) {
+  const raw = String(value || "").trim();
+  const named = raw.match(/^(.*?)<([^>]+)>$/);
+  if (!named) return raw;
+  const name = named[1].trim().replace(/^"|"$/g, "");
+  const email = named[2].trim();
+  if (!name || !email) return raw;
+  return { name, email };
+}
+
+export function renderApprovalEmail(row, videoUrl) {
+  const name = String(row.full_name || row.fullName || "").trim();
+  const url = String(videoUrl || "").trim();
+  const text = [
+    `Hello ${name},`,
+    "",
+    "The SPHERE team approved your demo request. You can watch the demo here:",
+    url,
+    "",
+    "the SPHERE team",
+  ].join("\n");
+  const safeName = escapeHtml(name);
+  const safeUrl = escapeHtml(url);
+  const html = [
+    `<p>Hello ${safeName},</p>`,
+    "<p>The SPHERE team approved your demo request. You can watch the demo here:</p>",
+    `<p><a href="${safeUrl}">${safeUrl}</a></p>`,
+    "<p>the SPHERE team</p>",
+  ].join("");
+  return { subject: "Your SPHERE demo", text, html };
+}
+
+export async function sendApprovalEmail(env, row) {
+  if (!approvalEmailEnabled(env)) return { sent: false, reason: "disabled" };
+  const to = String((row && (row.work_email || row.workEmail)) || "").trim();
+  const fromRaw = typeof env.EMAIL_FROM === "string" ? env.EMAIL_FROM.trim() : "";
+  const videoUrl = typeof env.VIDEO_URL === "string" ? env.VIDEO_URL.trim() : "";
+  if (!to || !fromRaw || !videoUrl) {
+    throw new Error("Approval email is not configured.");
+  }
+  if (!env.SEND_EMAIL || typeof env.SEND_EMAIL.send !== "function") {
+    throw new Error("Email sending is not configured.");
+  }
+  const message = renderApprovalEmail(row, videoUrl);
+  await env.SEND_EMAIL.send({
+    to,
+    from: parseFromAddress(fromRaw),
+    subject: message.subject,
+    text: message.text,
+    html: message.html,
+  });
+  return { sent: true };
 }
